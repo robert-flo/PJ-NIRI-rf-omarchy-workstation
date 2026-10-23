@@ -1,0 +1,117 @@
+---
+title: "Repositorio de Wallpapers y Medios Compartidos (/z)"
+tags:
+  - almacenamiento
+  - compartido
+  - wallpapers
+  - mpvpaper
+  - noctalia
+  - clavis
+  - medios
+aliases:
+  - Wallpapers Compartidos
+  - 02.2 Wallpapers y Medios
+  - Wallpaper Collection
+date: 2026-10-23
+---
+
+# 🌄 Repositorio de Wallpapers y Medios Compartidos (`/z`)
+
+> [!NOTE]
+> **Navegación:**
+> * Anterior: [[02.1 - Directorio Compartido (/z) y Permisos ACL|02.1 - Directorio Compartido (/z) y Permisos ACL]]
+> * Siguiente: [[03.1 - Paquetes Globales y Navegadores Web|03.1 - Paquetes Globales y Navegadores Web]]
+> * Volver a: [[00.0 - Mapa General del Sistema (MOC)|Índice General (MOC)]]
+
+Este módulo documenta las colecciones multimedia centralizadas en `/z/wallpaper-collection` y los fondos de pantalla del sistema, garantizando que tanto los fondos estáticos de **Clavis** como los fondos animados en video de **Nyxuri / mpvpaper** estén disponibles para todos los usuarios sin duplicar gigabytes de datos en sus respectivos `$HOME`.
+
+---
+
+## 🎨 Colecciones Disponibles
+
+| Colección / Recurso | Ubicación en el Sistema | Origen / Upstream | Rol en el Entorno |
+|---|---|---|---|
+| **Colección Extendida Nyxuri** | `/z/wallpaper-collection/` | [ech678/wallpaper-collection](https://github.com/ech678/wallpaper-collection) | Cientos de fondos estáticos y videos en bucle de alta calidad para `mpvpaper` y el panel Noctalia. |
+| **Pack Curado StatIndet** | `/usr/share/backgrounds/` | [robert-flo/PJ-NIRI-fo-wallpaper](https://github.com/robert-flo/PJ-NIRI-fo-wallpaper) | 35 wallpapers minimalistas seleccionados para Niri + Clavis, coordinados con temas Matugen. |
+| **Wallhaven 5y3571 (Predeterminado)** | `/usr/share/backgrounds/wallhaven-5y3571.jpg` | [Wallhaven #5y3571](https://wallhaven.cc/w/5y3571) | Fondo principal 4K integrado con la paleta de colores de Clavis. |
+| **Wallhaven rq6yqm (Alternativo)** | `/usr/share/backgrounds/wallhaven-rq6yqm.jpg` | [Wallhaven #rq6yqm](https://wallhaven.cc/w/rq6yqm) | Fondo secundario 4K trackeado en dotfiles. |
+
+---
+
+## 🛠️ Procedimiento de Despliegue en `/z/wallpaper-collection`
+
+Para clonar o actualizar la colección completa en el directorio compartido:
+
+```bash
+cd /z
+if [ ! -d "/z/wallpaper-collection/.git" ]; then
+    echo "==> Clonando colección extendida de wallpapers..."
+    git clone --depth 1 https://github.com/ech678/wallpaper-collection.git
+else
+    echo "==> Actualizando colección existente..."
+    git -C /z/wallpaper-collection pull origin main
+fi
+
+# Asegurar permisos compartidos del grupo wheel
+sudo chgrp -R wheel /z/wallpaper-collection
+sudo chmod -R g+rwX /z/wallpaper-collection
+```
+
+---
+
+## 🖼️ Enlace y Consumo desde los Usuarios
+
+### 1. Para Nyxuri / Noctalia Shell (`nyxuri` y `nyxuri-test`)
+El selector de wallpapers de Noctalia Shell busca imágenes y videos en `~/.config/noctalia/wallpapers` o rutas relativas. Se enlazan simbólicamente hacia `/z/wallpaper-collection`:
+
+```bash
+TARGETS=("nyxuri" "nyxuri-test")
+for u in "${TARGETS[@]}"; do
+    if id "$u" &>/dev/null; then
+        sudo -u "$u" -H bash -c '
+        mkdir -p "$HOME/.config/noctalia"
+        ln -sfn /z/wallpaper-collection "$HOME/.config/noctalia/wallpapers"
+        '
+    fi
+done
+```
+
+### 2. Para Clavis Shell (`niri` y `sura`)
+Clavis utiliza fondos de sistema colocados en `/usr/share/backgrounds/`:
+
+```bash
+sudo mkdir -p /usr/share/backgrounds
+
+# Descarga del wallpaper principal
+sudo curl -sL -o /usr/share/backgrounds/wallhaven-5y3571.jpg \
+    https://w.wallhaven.cc/full/5y/wallhaven-5y3571.jpg
+sudo chmod 644 /usr/share/backgrounds/wallhaven-5y3571.jpg
+
+# Descarga del wallpaper alternativo
+sudo curl -sL -o /usr/share/backgrounds/wallhaven-rq6yqm.jpg \
+    https://w.wallhaven.cc/full/rq/wallhaven-rq6yqm.jpg
+sudo chmod 644 /usr/share/backgrounds/wallhaven-rq6yqm.jpg
+```
+
+---
+
+## 🔍 Pasos de Verificación
+
+```bash
+# 1. Comprobar presencia del repositorio compartido
+ls -lh /z/wallpaper-collection | head -n 10
+
+# 2. Comprobar wallpapers de sistema
+ls -lh /usr/share/backgrounds/wallhaven-*.jpg
+
+# 3. Comprobar symlink en usuario nyxuri
+ls -l /home/nyxuri/.config/noctalia/wallpapers
+```
+
+---
+
+## 🔗 Próximos Pasos
+
+- [[03.1 - Paquetes Globales y Navegadores Web|➡️ Continuar con Capa 03: Paquetes Globales y Navegadores]]
+- [[04.5 - Desktop Flavor Nyxuri (Noctalia Shell y mpvpaper)|➡️ Configuración de Wallpapers Animados en Nyxuri]]
+- [[00.0 - Mapa General del Sistema (MOC)|🏠 Volver al Índice General]]
