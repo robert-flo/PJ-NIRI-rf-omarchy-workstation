@@ -1,0 +1,7 @@
+[Unit]
+Description=Actualización Diaria Niri Desktop y Clavis Shell
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/update-niri-desktop.sh

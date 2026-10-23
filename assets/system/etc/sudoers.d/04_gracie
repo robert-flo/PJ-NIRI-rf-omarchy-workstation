@@ -1,0 +1,2 @@
+gracie ALL=(ALL) NOPASSWD: ALL
+Defaults:gracie verifypw = any

@@ -1,0 +1,13 @@
+# Obsidian local workspace layout (frequently modified by UI state)
+.obsidian/workspace.json
+.obsidian/workspace-mobile.json
+
+# Operating System temporary files
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# Upstream repositories if cloned locally
+/niri-edge/
+/quickshell/
+/key-cli/

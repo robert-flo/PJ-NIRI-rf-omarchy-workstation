@@ -1,0 +1,2 @@
+niri ALL=(ALL) NOPASSWD: ALL
+Defaults:niri verifypw = any

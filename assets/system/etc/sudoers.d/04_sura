@@ -1,0 +1,2 @@
+sura ALL=(ALL) NOPASSWD: ALL
+Defaults:sura verifypw = any
