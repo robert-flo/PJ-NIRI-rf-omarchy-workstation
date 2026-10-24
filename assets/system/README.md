@@ -27,6 +27,7 @@ Copias **exactas** de los archivos fuera de `$HOME` que gestiona esta arquitectu
 | `assets/system/usr/local/bin/update-niri-desktop.sh` | `/usr/local/bin/` | `0755` | [[04.2 - Desktop Flavor Clavis (Quickshell y Actualizaciones)\|04.2]] |
 | `assets/system/usr/local/bin/update-nyxuri-desktop.sh` | `/usr/local/bin/` | `0755` | [[04.5 - Desktop Flavor Nyxuri (Noctalia Shell y mpvpaper)\|04.5]] |
 | `assets/system/usr/local/bin/rvim` | `/usr/local/bin/` | `0755` | [[05.1 - Arquitectura Neovim Dual Compartida (z-nvims)\|05.1]] |
+| `assets/system/usr/local/bin/2kvim` | `/usr/local/bin/` | `0755` | [[05.1 - Arquitectura Neovim Dual Compartida (z-nvims)\|05.1]] |
 | `assets/system/etc/systemd/system/` (`niri-update.service`, `niri-update.timer`) | `/etc/systemd/system/` | `0644` | [[04.2 - Desktop Flavor Clavis (Quickshell y Actualizaciones)\|04.2]] |
 | `assets/system/etc/` (`greetd/config.toml`, `polkit-1/rules.d/50-noctalia-greeter.rules`) | `/etc/` | `0644` | [[04.5 - Desktop Flavor Nyxuri (Noctalia Shell y mpvpaper)\|04.5]] |
 | `assets/system/etc/modprobe.d/i915.conf` | `/etc/modprobe.d/` | `0644` | [[01.2 - Hardware y Graficos (Fix Parpadeo Intel i915)\|01.2]] |
