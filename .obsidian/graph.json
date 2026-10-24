@@ -1,22 +1,79 @@
 {
-  "collapse-filter": true,
-  "search": "",
+  "collapse-filter": false,
+  "search": "-file:README -file:AGENTS",
   "showTags": false,
   "showAttachments": false,
-  "hideUnresolved": false,
+  "hideUnresolved": true,
   "showOrphans": true,
-  "collapse-color-groups": true,
-  "colorGroups": [],
-  "collapse-display": true,
-  "showArrow": false,
+  "collapse-color-groups": false,
+  "colorGroups": [
+    {
+      "query": "tag:#workstation/c00-topologia",
+      "color": {
+        "a": 1,
+        "rgb": 12464895
+      }
+    },
+    {
+      "query": "tag:#workstation/c01-core",
+      "color": {
+        "a": 1,
+        "rgb": 16733270
+      }
+    },
+    {
+      "query": "tag:#workstation/c02-storage",
+      "color": {
+        "a": 1,
+        "rgb": 16753920
+      }
+    },
+    {
+      "query": "tag:#workstation/c03-toolchain",
+      "color": {
+        "a": 1,
+        "rgb": 16766720
+      }
+    },
+    {
+      "query": "tag:#workstation/c04-desktop",
+      "color": {
+        "a": 1,
+        "rgb": 3394662
+      }
+    },
+    {
+      "query": "tag:#workstation/c05-neovim",
+      "color": {
+        "a": 1,
+        "rgb": 3381759
+      }
+    },
+    {
+      "query": "tag:#workstation/c06-dotfiles",
+      "color": {
+        "a": 1,
+        "rgb": 7874559
+      }
+    },
+    {
+      "query": "tag:#workstation/c07-referencias",
+      "color": {
+        "a": 1,
+        "rgb": 9803157
+      }
+    }
+  ],
+  "collapse-display": false,
+  "showArrow": true,
   "textFadeMultiplier": 0,
-  "nodeSizeMultiplier": 1,
+  "nodeSizeMultiplier": 1.25,
   "lineSizeMultiplier": 1,
-  "collapse-forces": true,
-  "centerStrength": 0.518713248970312,
-  "repelStrength": 10,
-  "linkStrength": 1,
-  "linkDistance": 250,
-  "scale": 3.8634105686174935,
-  "close": true
+  "collapse-forces": false,
+  "centerStrength": 0.35,
+  "repelStrength": 14,
+  "linkStrength": 0.8,
+  "linkDistance": 280,
+  "scale": 1.4,
+  "close": false
 }
