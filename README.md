@@ -22,10 +22,23 @@ Arquitectura integral por capas, diseño de sistemas y bootstrap completo para u
 Este repositorio está estructurado como una bóveda (*vault*) nativa de **Obsidian**:
 1. Abre **Obsidian**.
 2. Selecciona **Open folder as vault** (Abrir carpeta como bóveda).
-3. Selecciona la carpeta de este repositorio: `2026-10-23-robert-flo-PJ-NIRI-rf-omarchy-workstation`.
+3. Selecciona la carpeta compartida: **`/z/PJ-NIRI-rf-omarchy-workstation`**.
 4. Abre la nota principal: **`00 - MOC y Topologia/00.0 - Mapa General del Sistema (MOC).md`**.
 
-Podrás navegar con enlaces bidireccionales (`[[wikilinks]]`), diagramas interactivos de Mermaid, visualización del Graph View por clusters temáticos, etiquetas (*tags*), bloques de alerta (*callouts*) y reproductores de video embebidos.
+### ⚓ Lanzadores Rápidos a los Hubs de Capa (Obsidian URI)
+
+Si ya tienes la bóveda abierta o agregada en Obsidian, puedes saltar directamente a cualquier hub de capa haciendo clic en los enlaces de la tabla:
+
+| Capa Arquitectónica | Hub Central de Capa | Lanzador Rápido Nativo |
+|---|---|---|
+| **Capa 00 — Topología & MOC** | [[00.0 - Mapa General del Sistema (MOC)\|00.0 - Mapa General del Sistema]] | [🚀 Abrir MOC Maestro](obsidian://open?vault=PJ-NIRI-rf-omarchy-workstation&file=00%20-%20MOC%20y%20Topologia%2F00.0%20-%20Mapa%20General%20del%20Sistema%20(MOC)) |
+| **Capa 01 — Core del Sistema** | [[01.0 - Core del Sistema (MOC)\|01.0 - Core del Sistema (MOC)]] | [🚀 Abrir Capa 01](obsidian://open?vault=PJ-NIRI-rf-omarchy-workstation&file=01%20-%20Core%20del%20Sistema%2F01.0%20-%20Core%20del%20Sistema%20(MOC)) |
+| **Capa 02 — Almacenamiento Compartido** | [[02.0 - Almacenamiento Compartido (MOC)\|02.0 - Almacenamiento Compartido]] | [🚀 Abrir Capa 02](obsidian://open?vault=PJ-NIRI-rf-omarchy-workstation&file=02%20-%20Almacenamiento%20Compartido%2F02.0%20-%20Almacenamiento%20Compartido%20(MOC)) |
+| **Capa 03 — Toolchain Global** | [[03.0 - Toolchain Global y Estacion de Trabajo (MOC)\|03.0 - Toolchain Global]] | [🚀 Abrir Capa 03](obsidian://open?vault=PJ-NIRI-rf-omarchy-workstation&file=03%20-%20Toolchain%20Global%20y%20Estacion%20de%20Trabajo%2F03.0%20-%20Toolchain%20Global%20y%20Estacion%20de%20Trabajo%20(MOC)) |
+| **Capa 04 — Entornos de Escritorio** | [[04.0 - Entornos de Escritorio (MOC)\|04.0 - Entornos de Escritorio]] | [🚀 Abrir Capa 04](obsidian://open?vault=PJ-NIRI-rf-omarchy-workstation&file=04%20-%20Entornos%20de%20Escritorio%2F04.0%20-%20Entornos%20de%20Escritorio%20(MOC)) |
+| **Capa 05 — Suite Neovim Dual** | [[05.0 - Suite de Desarrollo Neovim (MOC)\|05.0 - Suite Neovim Dual]] | [🚀 Abrir Capa 05](obsidian://open?vault=PJ-NIRI-rf-omarchy-workstation&file=05%20-%20Suite%20de%20Desarrollo%20Neovim%2F05.0%20-%20Suite%20de%20Desarrollo%20Neovim%20(MOC)) |
+| **Capa 06 — Dotfiles y Mantenimiento** | [[06.0 - Dotfiles y Ciclo de Vida (MOC)\|06.0 - Dotfiles y Ciclo de Vida]] | [🚀 Abrir Capa 06](obsidian://open?vault=PJ-NIRI-rf-omarchy-workstation&file=06%20-%20Dotfiles%20y%20Ciclo%20de%20Vida%20(MOC)) |
+| **Capa 07 — Referencias del Sistema** | [[07.0 - Referencias del Sistema (MOC)\|07.0 - Referencias del Sistema]] | [🚀 Abrir Capa 07](obsidian://open?vault=PJ-NIRI-rf-omarchy-workstation&file=07%20-%20Referencias%20del%20Sistema%2F07.0%20-%20Referencias%20del%20Sistema%20(MOC)) |
 
 ---
 
