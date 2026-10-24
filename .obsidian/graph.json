@@ -8,56 +8,56 @@
   "collapse-color-groups": false,
   "colorGroups": [
     {
-      "query": "tag:#workstation/c00-topologia",
+      "query": "tag:#capa-00-topologia",
       "color": {
         "a": 1,
         "rgb": 12464895
       }
     },
     {
-      "query": "tag:#workstation/c01-core",
+      "query": "tag:#capa-01-core",
       "color": {
         "a": 1,
         "rgb": 16733270
       }
     },
     {
-      "query": "tag:#workstation/c02-storage",
+      "query": "tag:#capa-02-storage",
       "color": {
         "a": 1,
         "rgb": 16753920
       }
     },
     {
-      "query": "tag:#workstation/c03-toolchain",
+      "query": "tag:#capa-03-toolchain",
       "color": {
         "a": 1,
         "rgb": 16766720
       }
     },
     {
-      "query": "tag:#workstation/c04-desktop",
+      "query": "tag:#capa-04-desktops",
       "color": {
         "a": 1,
         "rgb": 3394662
       }
     },
     {
-      "query": "tag:#workstation/c05-neovim",
+      "query": "tag:#capa-05-neovim",
       "color": {
         "a": 1,
         "rgb": 3381759
       }
     },
     {
-      "query": "tag:#workstation/c06-dotfiles",
+      "query": "tag:#capa-06-dotfiles",
       "color": {
         "a": 1,
         "rgb": 7874559
       }
     },
     {
-      "query": "tag:#workstation/c07-referencias",
+      "query": "tag:#capa-07-referencias",
       "color": {
         "a": 1,
         "rgb": 9803157
@@ -65,15 +65,15 @@
     }
   ],
   "collapse-display": false,
-  "showArrow": true,
+  "showArrow": false,
   "textFadeMultiplier": 0,
-  "nodeSizeMultiplier": 1.25,
+  "nodeSizeMultiplier": 1.1,
   "lineSizeMultiplier": 1,
   "collapse-forces": false,
-  "centerStrength": 0.35,
-  "repelStrength": 14,
-  "linkStrength": 0.8,
-  "linkDistance": 280,
-  "scale": 1.4,
+  "centerStrength": 0.28,
+  "repelStrength": 16,
+  "linkStrength": 0.5,
+  "linkDistance": 320,
+  "scale": 1.2,
   "close": false
 }
