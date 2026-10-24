@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# Wrapper para invocar Neovim usando la configuración aislada '2kvim' (nvim2k)
+# Utiliza NVIM_APPNAME para separar configuración (~/.config/2kvim), plugins, caché y estado.
+NVIM_APPNAME="2kvim" exec nvim "$@"
