@@ -43,8 +43,8 @@ PJ-NIRI-rf-omarchy-workstation/
 │   ├── 01.4 - Display Manager y Sesiones SDDM (Herald OS).md
 │   └── 01.5 - Snapshots y Recuperacion con Btrfs.md
 ├── 02 - Almacenamiento Compartido/
-│   ├── 02.1 - Directorio Compartido (/z) y Permisos ACL.md
-│   └── 02.2 - Repositorio de Wallpapers y Medios (/z).md
+│   ├── 02.1 - Directorio Compartido (z) y Permisos ACL.md
+│   └── 02.2 - Repositorio de Wallpapers y Medios (z).md
 ├── 03 - Toolchain Global y Estacion de Trabajo/
 │   ├── 03.1 - Paquetes Globales y Navegadores Web.md
 │   ├── 03.2 - Toolchain de Desarrollo (C, Rust, Node, Python).md
@@ -57,7 +57,7 @@ PJ-NIRI-rf-omarchy-workstation/
 │   ├── 04.4 - Suite de Aplicaciones Clavis.md
 │   └── 04.5 - Desktop Flavor Nyxuri (Noctalia Shell y mpvpaper).md
 ├── 05 - Suite de Desarrollo Neovim/
-│   ├── 05.1 - Arquitectura Neovim Dual Compartida (/z/nvims).md
+│   ├── 05.1 - Arquitectura Neovim Dual Compartida (z-nvims).md
 │   └── 05.2 - Configuracion Craftzdog (nvim) y Distro Propia (rvim).md
 ├── 06 - Dotfiles y Ciclo de Vida/
 │   ├── 06.1 - Gestion de Dotfiles con dotbare.md
