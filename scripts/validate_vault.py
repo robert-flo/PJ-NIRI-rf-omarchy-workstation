@@ -17,7 +17,7 @@ VAULT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 def get_markdown_files():
     md_files = []
     for root, _, files in os.walk(VAULT_ROOT):
-        if ".git" in root or ".obsidian" in root:
+        if ".git" in root or ".obsidian" in root or os.path.relpath(root, VAULT_ROOT).startswith("scripts"):
             continue
         for f in files:
             if f.endswith(".md"):

@@ -39,6 +39,7 @@ Cuando el usuario pida "wipe", "reseteo" o "regeneración a estado original" de 
 1. **Obligatorio preguntar:** El agente **NUNCA** debe ejecutar el wipe a ciegas. Debe preguntar de forma explícita en cuáles usuarios se desea aplicar (generalmente serán los usuarios `*-test` como `niri-test` y `nyxuri-test`, pero permitiendo seleccionar o confirmar cuentas de producción como `niri`, `nyxuri` o `nyxuri-legacy`).
 2. **Procedimiento formal:** Seguir los pasos detallados en la nota `[[06.2 - Validacion en Usuario Limpio (Testbench sura y nyxuri-test)]]` según la familia de configuración del usuario (dotbare vs nyxuri edge vs nyxuri stable).
 3. **Persistencia Neovim:** Siempre re-enlazar la suite unificada de `/z/nvims/` (`nvim`, `rvim`, `2kvim`) y validar que levanten en modo `--headless`.
+4. **Stack Android / Google:** Asegurar la presencia de variables `ANDROID_HOME` y rutas compartidas en `~/.bashrc` y `~/.config/fish/conf.d/android.fish`.
 
 ## Formato y Estándares de las Notas en Obsidian
 

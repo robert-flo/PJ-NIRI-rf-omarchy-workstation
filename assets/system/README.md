@@ -31,6 +31,13 @@ Copias **exactas** de los archivos fuera de `$HOME` que gestiona esta arquitectu
 | `assets/system/etc/systemd/system/` (`niri-update.service`, `niri-update.timer`) | `/etc/systemd/system/` | `0644` | [[04.2 - Desktop Flavor Clavis (Quickshell y Actualizaciones)\|04.2]] |
 | `assets/system/etc/` (`greetd/config.toml`, `polkit-1/rules.d/50-noctalia-greeter.rules`) | `/etc/` | `0644` | [[04.5 - Desktop Flavor Nyxuri (Noctalia Shell y mpvpaper)\|04.5]] |
 | `assets/system/etc/modprobe.d/i915.conf` | `/etc/modprobe.d/` | `0644` | [[01.2 - Hardware y Graficos (Fix Parpadeo Intel i915)\|01.2]] |
+| `assets/system/etc/environment.d/10-android.conf` | `/etc/environment.d/` | `0644` | [[03.5 - Ecosistema Google Antigravity y Android Studio Canary (BYOA)\|03.5]] |
+| `assets/system/etc/fish/conf.d/android.fish` | `/etc/fish/conf.d/` | `0644` | [[03.5 - Ecosistema Google Antigravity y Android Studio Canary (BYOA)\|03.5]] |
+| `assets/system/etc/profile.d/android.sh` | `/etc/profile.d/` | `0755` | [[03.5 - Ecosistema Google Antigravity y Android Studio Canary (BYOA)\|03.5]] |
+| `assets/system/usr/local/bin/google-chrome` | `/usr/local/bin/` | `0755` | [[03.5 - Ecosistema Google Antigravity y Android Studio Canary (BYOA)\|03.5]] |
+| `assets/system/usr/local/bin/fix_shared_dir_perms.sh` | `/usr/local/bin/` | `0755` | [[02.1 - Directorio Compartido (z) y Permisos ACL\|02.1]] |
+| `assets/system/usr/local/bin/` (`*_watcher.sh`) | `/usr/local/bin/` | `0755` | [[02.1 - Directorio Compartido (z) y Permisos ACL\|02.1]] |
+| `assets/system/etc/systemd/system/` (`android-*-perms.*`, `z-perms.*`) | `/etc/systemd/system/` | `0644` | [[02.1 - Directorio Compartido (z) y Permisos ACL\|02.1]] |
 
 > [!WARNING]
 > **Mantener sincronizado.** Si cambias uno de estos archivos en la máquina, copia la versión nueva aquí y actualiza la nota que lo explica. La comprobación `cmp` de [[07.4 - Archivos de Sistema de Referencia (assets-system)\|07.4]] muestra qué difiere.
