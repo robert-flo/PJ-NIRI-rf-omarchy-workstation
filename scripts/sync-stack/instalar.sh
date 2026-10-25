@@ -101,7 +101,31 @@ done
 echo "   [✓] Módulos QML instalados en usuarios y /etc/skel."
 
 # 5. Instalar y habilitar unidades systemd
-echo "[5/6] Instalando servicios y temporizadores systemd..."
+echo "[5/6] Verificando salud de Google Drive e inicialización de carpetas..."
+
+# Comprobar conectividad con Google Drive
+if ! rclone lsd gdrive: >/dev/null 2>&1; then
+    echo "   [!] Advertencia: Google Drive ('gdrive:') no responde o el token requiere renovación."
+    echo "   Ejecuta 'rclone config reconnect gdrive:' para renovar la sesión si es necesario."
+else
+    echo "   [✓] Conectividad con Google Drive verificada."
+fi
+
+# Escudo de Primera Sincronización: Si la máquina es nueva y las carpetas locales están vacías,
+# descargamos una copia inicial réplica desde Google Drive antes de activar los temporizadores maestros.
+if [[ -d "/z-drive/idalia" ]] && [[ $(find /z-drive/idalia -maxdepth 1 -mindepth 1 | wc -l) -eq 0 ]]; then
+    echo "   [!] Carpeta local /z-drive/idalia vacía detectada."
+    echo "   [!] Descargando réplica inicial desde Google Drive para evitar borrado accidental..."
+    /usr/local/bin/sync-idalia --replica || true
+fi
+
+if [[ -d "/z-drive/uploads-gracie" ]] && [[ $(find /z-drive/uploads-gracie -maxdepth 1 -mindepth 1 | wc -l) -eq 0 ]]; then
+    echo "   [!] Carpeta local /z-drive/uploads-gracie vacía detectada."
+    echo "   [!] Descargando réplica inicial desde Google Drive..."
+    /usr/local/bin/sync-uploads-gracie --replica || true
+fi
+
+echo "[6/7] Instalando servicios y temporizadores systemd..."
 UNITS_DIR="$SCRIPT_DIR/systemd"
 if [[ -d "$UNITS_DIR" ]]; then
     for unit in "$UNITS_DIR"/*; do
@@ -115,8 +139,8 @@ if [[ -d "$UNITS_DIR" ]]; then
     echo "   [✓] Temporizadores y servicios del sistema habilitados y activos."
 fi
 
-# 6. Resumen final
-echo "[6/6] Verificación de salud..."
+# 7. Resumen final
+echo "[7/7] Verificación de salud..."
 echo "=================================================================="
 echo "   [✓] DESPLIEGUE COMPLETADO EXITOSAMENTE                         "
 echo "=================================================================="
