@@ -9,7 +9,26 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ENCRYPTED_FILE="${1:-${SCRIPT_DIR}/secrets.tar.gz.age}"
+EXPORT_STAGING=""
+ENCRYPTED_FILE="${SCRIPT_DIR}/secrets.tar.gz.age"
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --export-staging)
+            EXPORT_STAGING="${2:-/tmp/staging-secrets}"
+            shift 2 || shift 1
+            ;;
+        -h|--help)
+            echo "Uso: $0 [OPCIONES] [ARCHIVO_AGE]"
+            echo "  --export-staging [DIR]  Descifra y exporta los secretos a una carpeta para modificarlos/añadir nuevos"
+            exit 0
+            ;;
+        *)
+            ENCRYPTED_FILE="$1"
+            shift
+            ;;
+    esac
+done
 
 if ! command -v age >/dev/null 2>&1; then
     echo "[!] 'age' no está instalado. Instalándolo con pacman..."
@@ -54,6 +73,23 @@ tar -xzf "$TMP_DIR/bundle.tar.gz" -C "$TMP_DIR"
 rm -f "$TMP_DIR/bundle.tar.gz"
 
 echo "[✓] Descifrado completado en memoria."
+
+# Modo Exportación para edición/mantenimiento
+if [[ -n "$EXPORT_STAGING" ]]; then
+    mkdir -p "$EXPORT_STAGING"
+    cp -r "$TMP_DIR"/* "$EXPORT_STAGING/"
+    chmod -R 700 "$EXPORT_STAGING"
+    echo ""
+    echo "=================================================================="
+    echo " [✓] Secretos exportados exitosamente para mantenimiento en:"
+    echo "     $EXPORT_STAGING"
+    echo "=================================================================="
+    echo "Puedes añadir, editar o eliminar los archivos que necesites."
+    echo "Cuando finalices, vuelve a cifrar el paquete ejecutando:"
+    echo "  ${SCRIPT_DIR}/recifrar-interactivo.sh $EXPORT_STAGING"
+    echo "=================================================================="
+    exit 0
+fi
 
 # 2. Desplegar Rclone Global (/etc/rclone/rclone.conf)
 echo "[2/6] Configurando Rclone multi-usuario (/etc/rclone/rclone.conf)..."

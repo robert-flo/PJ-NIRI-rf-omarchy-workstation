@@ -40,6 +40,7 @@ Sincroniza '${SOURCE}' hacia Google Drive y el disco externo BTRFS.
 Comandos:
   status, --status             Muestra el estado de salud, discos, snapshots y servicios.
   deletions, --show-deletions  Muestra el listado de archivos detectados para borrado.
+  pull, --pull                 Descarga / restaura proyectos desde Btrfs y Google Drive.
 
 Opciones de sincronización:
   -n, --dry-run        Simula las operaciones sin modificar ningún archivo.
@@ -194,6 +195,10 @@ while [[ $# -gt 0 ]]; do
             FORCE_DELETE=true
             shift
             ;;
+        pull|--pull)
+            MODE="pull"
+            shift
+            ;;
         --show-deletions|--deletions|deletions)
             if [[ -f "$DELETIONS_LOG" && -s "$DELETIONS_LOG" ]]; then
                 cat "$DELETIONS_LOG"
@@ -229,6 +234,37 @@ notify() {
         notify-send -u "$urgency" "$title" "$msg" 2>/dev/null || true
     fi
 }
+
+# Modo PULL / RESTAURAR DESDE NUBE O DISCO LOCAL
+if [[ "$MODE" == "pull" ]]; then
+    echo "=================================================================="
+    echo "        DESCARGA / RESTAURACIÓN DE PROYECTOS (PULL)              "
+    echo "=================================================================="
+    echo "Destino local: $SOURCE"
+    mkdir -p "$SOURCE" "$VAULT_SOURCE"
+
+    # 1. Si hay disco local montado, restaurar primero desde Btrfs
+    if findmnt -M "$LOCAL_MOUNT" >/dev/null 2>&1 && [[ -d "$LOCAL_DEST" ]]; then
+        echo "[1/2] Restaurando desde disco local Btrfs (${LOCAL_DEST})..."
+        rsync -avP "${RSYNC_EXCLUDES[@]}" "$LOCAL_DEST/" "$SOURCE/" || true
+    fi
+
+    # 2. Descargar o actualizar desde Google Drive
+    if command -v rclone >/dev/null 2>&1; then
+        echo "[2/2] Descargando desde Google Drive (${CLOUD_DEST})..."
+        rclone copy "$CLOUD_DEST" "$SOURCE" -P --fast-list "${RCLONE_EXCLUDES[@]}" || true
+
+        # Restaurar bóveda cifrada si existe
+        if rclone listremotes | grep -q "gdrive_boveda:"; then
+            echo "Descargando Bóveda Cifrada desde gdrive_boveda:..."
+            rclone copy "gdrive_boveda:" "$VAULT_SOURCE" -P || true
+        fi
+    fi
+
+    echo ""
+    echo "[✓] Descarga / restauración PULL completada."
+    exit 0
+fi
 
 # Control de concurrencia con flock
 exec 200>"$LOCK_FILE"
@@ -271,6 +307,23 @@ if [[ "$MODE" == "sync" && "$FORCE_DELETE" == false ]]; then
     PENDING_DELETIONS=0
     TOTAL_LOCAL_FILES=$(find "$SOURCE" -type f 2>/dev/null | wc -l)
     TMP_DEL_LIST=$(mktemp /tmp/sync-tries-deletions.XXXXXX)
+
+    # 0. Escudo para carpeta local vacía
+    if [[ $TOTAL_LOCAL_FILES -eq 0 ]]; then
+        ALERT_MSG="ALERTA CRÍTICA: Carpeta local '${SOURCE}' vacía (0 archivos). Sincronización detenida para proteger los respaldos en la nube y disco externo."
+        log "SEGURIDAD: $ALERT_MSG"
+        echo "=================================================================="
+        echo "   🛡️  ESCUDO DE SEGURIDAD: CARPETA LOCAL VACÍA DETECTADA        "
+        echo "=================================================================="
+        echo "Tu carpeta local '${SOURCE}' no contiene archivos."
+        echo "Si ejecutas modo sync en una carpeta vacía, se eliminaría el respaldo."
+        echo "Para descargar tus proyectos primero, ejecuta:"
+        echo "  sync-tries --pull"
+        echo "=================================================================="
+        notify "🛡️ Escudo sync-tries activado" "$ALERT_MSG" "critical"
+        rm -f "$TMP_DEL_LIST"
+        exit 2
+    fi
 
     # 0a. Si el disco local está conectado, verificar contra él
     if [[ "$DO_LOCAL" == true ]] && findmnt -M "$LOCAL_MOUNT" >/dev/null 2>&1 && [[ -d "$LOCAL_DEST" ]]; then
@@ -407,15 +460,21 @@ if [[ "$DO_CLOUD" == true ]] && command -v rclone >/dev/null 2>&1; then
 
     # Sincronización de Bóveda Cifrada si existe gdrive_boveda:
     if [[ -d "$VAULT_SOURCE" ]] && rclone listremotes | grep -q "gdrive_boveda:"; then
-        echo ""
-        log "--- 2b. Sincronizando Bóveda Cifrada (AES-256) hacia Google Drive ---"
-        RCLONE_VAULT_CMD=("rclone" "$MODE" "$VAULT_SOURCE" "gdrive_boveda:" -P --drive-use-trash)
-        [[ "$DRY_RUN" == true ]] && RCLONE_VAULT_CMD+=(--dry-run)
-        if "${RCLONE_VAULT_CMD[@]}"; then
-            log "Bóveda cifrada sincronizada exitosamente."
+        TOTAL_VAULT_FILES=$(find "$VAULT_SOURCE" -type f 2>/dev/null | wc -l)
+        if [[ $TOTAL_VAULT_FILES -eq 0 ]]; then
+            log "AVISO DE SEGURIDAD: Bóveda local '${VAULT_SOURCE}' vacía. Sincronización omitida hacia gdrive_boveda: para evitar borrado remoto."
+            log "Para descargar tu bóveda desde Google Drive ejecuta: rclone copy gdrive_boveda: ${VAULT_SOURCE} -P"
         else
-            log "ERROR al sincronizar la bóveda cifrada."
-            ERRORS=$((ERRORS + 1))
+            echo ""
+            log "--- 2b. Sincronizando Bóveda Cifrada (AES-256) hacia Google Drive ---"
+            RCLONE_VAULT_CMD=("rclone" "$MODE" "$VAULT_SOURCE" "gdrive_boveda:" -P --drive-use-trash)
+            [[ "$DRY_RUN" == true ]] && RCLONE_VAULT_CMD+=(--dry-run)
+            if "${RCLONE_VAULT_CMD[@]}"; then
+                log "Bóveda cifrada sincronizada exitosamente."
+            else
+                log "ERROR al sincronizar la bóveda cifrada."
+                ERRORS=$((ERRORS + 1))
+            fi
         fi
     fi
 fi

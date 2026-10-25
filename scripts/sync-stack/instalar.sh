@@ -125,6 +125,12 @@ if [[ -d "/z-drive/uploads-gracie" ]] && [[ $(find /z-drive/uploads-gracie -maxd
     /usr/local/bin/sync-uploads-gracie --replica || true
 fi
 
+if [[ -d "/z-drive/tries" ]] && [[ $(find /z-drive/tries -maxdepth 1 -mindepth 1 | wc -l) -eq 0 ]]; then
+    echo "   [!] Carpeta local /z-drive/tries vacía detectada."
+    echo "   [!] Descargando respaldo inicial con sync-tries --pull..."
+    /usr/local/bin/sync-tries --pull || true
+fi
+
 echo "[6/7] Instalando servicios y temporizadores systemd..."
 UNITS_DIR="$SCRIPT_DIR/systemd"
 if [[ -d "$UNITS_DIR" ]]; then
