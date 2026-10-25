@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+#
+# sync-tries-watcher: Demonio reactivo por inactividad para /z-drive/tries
+# Espera 5 minutos de inactividad (debounce) tras detectar cambios antes de sincronizar.
+#
+
+set -eo pipefail
+
+WATCH_DIR="/z-drive/tries"
+DEBOUNCE_SECS=300
+STATE_DIR="/z-drive/.sync-state"
+mkdir -p "$STATE_DIR"
+LOG_FILE="${STATE_DIR}/sync-tries-watcher.log"
+
+log() {
+  local msg="[$(date '+%Y-%m-%d %H:%M:%S')] [WATCHER] $*"
+  echo "$msg"
+  echo "$msg" >> "$LOG_FILE"
+}
+
+if ! command -v inotifywait >/dev/null 2>&1; then
+  log "ERROR: inotifywait no está instalado. Instálalo con: sudo pacman -S inotify-tools"
+  exit 1
+fi
+
+log "Iniciando vigilancia reactiva en: ${WATCH_DIR} (Debounce: ${DEBOUNCE_SECS}s)"
+
+EXCLUDE_REGEX='(\.git/|node_modules/|\.venv/|venv/|target/|build/|dist/|\.cache/|__pycache__/|\.sync-state/)'
+
+while true; do
+  # Esperar primer evento de cambio
+  if inotifywait -r -q -e modify,create,delete,move --exclude "$EXCLUDE_REGEX" "$WATCH_DIR" >/dev/null 2>&1; then
+    log "Evento detectado. Iniciando periodo de inactividad de ${DEBOUNCE_SECS}s..."
+    
+    # Bucle debounce
+    while true; do
+      if inotifywait -r -q -t "$DEBOUNCE_SECS" -e modify,create,delete,move --exclude "$EXCLUDE_REGEX" "$WATCH_DIR" >/dev/null 2>&1; then
+        log "Nuevo evento detectado. Reiniciando temporizador de ${DEBOUNCE_SECS}s..."
+      else
+        log "Periodo de inactividad alcanzado (${DEBOUNCE_SECS}s sin cambios). Disparando sync-tries..."
+        sync-tries || log "ADVERTENCIA: sync-tries finalizó con advertencias."
+        break
+      fi
+    done
+  else
+    sleep 5
+  fi
+done

@@ -1,0 +1,12 @@
+[Unit]
+Description=Monitors /z-drive and fixes permissions in real time
+After=local-fs.target
+[Service]
+
+Type=simple
+ExecStart=/usr/local/bin/z-drive-perms_watcher.sh
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

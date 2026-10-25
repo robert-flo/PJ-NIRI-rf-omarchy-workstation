@@ -1,0 +1,66 @@
+#!/usr/bin/env bash
+set -uo pipefail
+
+SRC="$HOME/MOVED_4"
+DEST="gdrive:MOVED_4"
+LOGFILE="/tmp/rclone-moved4.log"
+LOCKFILE="/tmp/rclone-moved4.lock"
+
+# Evitar ejecuciones simultaneas
+exec 200>"$LOCKFILE"
+if ! flock -n 200; then
+    echo "Ya hay una subida de MOVED_4 en ejecucion. Saliendo."
+    exit 0
+fi
+
+if [ ! -d "$SRC" ]; then
+    mkdir -p "$SRC"
+fi
+
+# Inicializar archivo de log con banner de inicio
+touch "$LOGFILE"
+echo "=== $(date -Iseconds) START moved4-rclone-gdrive PID=$$ SRC=$SRC DEST=$DEST ===" >> "$LOGFILE"
+
+# Notificacion nativa de escritorio Omarchy al iniciar
+if command -v omarchy >/dev/null 2>&1; then
+    omarchy notification send --app-name "Rclone" "Subida a Google Drive" "Iniciando transferencia de MOVED_4..." 2>/dev/null || true
+fi
+
+# Si hay sesion grafica activa (Wayland/X11), abrir terminal flotante con estilo e integracion Omarchy
+if [ -n "${WAYLAND_DISPLAY:-}" ] || [ -n "${DISPLAY:-}" ]; then
+    WATCHER_SCRIPT="tail -n +1 -f '$LOGFILE' | sed '/^EXIT:/ q'; CODE=\$(grep -o 'EXIT:[0-9]*' '$LOGFILE' | tail -n 1 | cut -d: -f2 || echo 0); if command -v omarchy-show-done >/dev/null 2>&1; then omarchy-show-done \"\$CODE\"; else echo; read -n 1 -s -r -p 'Presiona cualquier tecla para salir...'; echo; fi"
+    
+    if command -v omarchy >/dev/null 2>&1; then
+        omarchy launch tui --app-id=TUI.float bash -c "$WATCHER_SCRIPT" >/dev/null 2>&1 &
+    elif command -v foot >/dev/null 2>&1; then
+        foot --app-id=TUI.float --title="Subida MOVED_4 -> Google Drive" bash -c "$WATCHER_SCRIPT" >/dev/null 2>&1 &
+    elif command -v xdg-terminal-exec >/dev/null 2>&1; then
+        xdg-terminal-exec --app-id=TUI.float --title="Subida MOVED_4 -> Google Drive" bash -c "$WATCHER_SCRIPT" >/dev/null 2>&1 &
+    fi
+fi
+
+/usr/bin/rclone copy "$SRC" "$DEST" \
+    --fast-list \
+    --create-empty-src-dirs \
+    --transfers 4 \
+    --checkers 8 \
+    --drive-chunk-size 64M \
+    --stats 10s \
+    -v >> "$LOGFILE" 2>&1
+EXIT_CODE=$?
+
+echo "=== $(date -Iseconds) END moved4-rclone-gdrive EXIT:$EXIT_CODE ===" >> "$LOGFILE"
+
+if [ $EXIT_CODE -eq 0 ]; then
+    /usr/bin/rclone size "$DEST" >> "$LOGFILE" 2>&1 || true
+    if command -v omarchy >/dev/null 2>&1; then
+        omarchy notification send --app-name "Rclone" "Subida Completada" "MOVED_4 se ha subido correctamente a Google Drive." 2>/dev/null || true
+    fi
+else
+    if command -v omarchy >/dev/null 2>&1; then
+        omarchy notification send -u critical --app-name "Rclone" "Error en la subida" "Hubo un error al transferir MOVED_4 (código $EXIT_CODE)." 2>/dev/null || true
+    fi
+fi
+
+echo "EXIT:$EXIT_CODE" >> "$LOGFILE"
+exit $EXIT_CODE

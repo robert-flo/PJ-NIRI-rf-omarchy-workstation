@@ -1,0 +1,434 @@
+#!/usr/bin/env bash
+#
+# sync-tries: Sincronización profesional de /z-drive/tries hacia ALMACEN_BTRFS (Btrfs CoW) y Google Drive
+# Adaptado para espacio colaborativo multi-usuario /z-drive
+#
+
+set -eo pipefail
+
+SOURCE="${Z_DRIVE_TRIES:-/z-drive/tries}"
+VAULT_SOURCE="${Z_DRIVE_BOVEDA:-/z-drive/boveda}"
+LOCAL_MOUNT=$(findmnt -n -o TARGET /run/media/*/ALMACEN_BTRFS 2>/dev/null | head -n 1 || echo "/run/media/omarchy/ALMACEN_BTRFS")
+LOCAL_DEST="${LOCAL_MOUNT}/gracie"
+LOCAL_SNAPSHOTS="${LOCAL_MOUNT}/.snapshots"
+CLOUD_DEST="gdrive:gracie"
+
+STATE_DIR="/z-drive/.sync-state"
+mkdir -p "$STATE_DIR"
+LOG_FILE="${STATE_DIR}/sync-tries.log"
+DELETIONS_LOG="${STATE_DIR}/sync-tries-deletions.log"
+LOCK_FILE="${STATE_DIR}/sync-tries.lock"
+EXCLUDE_FILE="/etc/rclone/exclusiones-sync.txt"
+
+MAX_DELETIONS_ABS=100  # Máximo de archivos borrados permitidos sin --force-delete
+MAX_DELETIONS_PCT=40   # Porcentaje máximo de archivos a borrar
+MAX_SNAPSHOTS=40       # Historial de snapshots Btrfs a conservar
+
+MODE="sync" # "sync" (espejo) o "copy" (acumulativo)
+DO_LOCAL=true
+DO_CLOUD=true
+DRY_RUN=false
+APPLY_EXCLUDES=true
+FORCE_DELETE=false
+
+show_help() {
+    cat << EOF
+Uso: $(basename "$0") [OPCIONES] | [COMANDO]
+
+Sincroniza '${SOURCE}' hacia Google Drive y el disco externo BTRFS.
+
+Comandos:
+  status, --status             Muestra el estado de salud, discos, snapshots y servicios.
+  deletions, --show-deletions  Muestra el listado de archivos detectados para borrado.
+
+Opciones de sincronización:
+  -n, --dry-run        Simula las operaciones sin modificar ningún archivo.
+  -c, --copy           Modo copia: no elimina archivos en destino si se borraron en origen.
+  -l, --local-only     Sincroniza únicamente hacia el disco local (${LOCAL_DEST}).
+  -r, --cloud-only     Sincroniza únicamente hacia Google Drive (${CLOUD_DEST}).
+  --all                Incluye todo (ignora la lista de exclusiones).
+  --force-delete       Permite el borrado masivo si se supera el umbral de seguridad.
+  -h, --help           Muestra esta ayuda.
+
+Seguridad integrada:
+  - Escudo Anti-Borrado: Si se detecta borrado masivo (> $MAX_DELETIONS_ABS archivos o > $MAX_DELETIONS_PCT%), se aborta.
+  - Snapshots Btrfs: Historial CoW de los últimos $MAX_SNAPSHOTS respaldos (espacio extra inicial: 0 bytes).
+  - Concurrencia (flock): Evita colisiones o ejecuciones simultáneas.
+  - Tolerancia a desconexión: Continúa a la nube si el disco externo no está montado.
+EOF
+}
+
+show_status() {
+    if command -v sync-status >/dev/null 2>&1; then
+        sync-status
+        exit 0
+    fi
+    echo "=================================================================="
+    echo "          ESTADO DE LA ESTRATEGIA DE SINCRONIZACIÓN               "
+    echo "=================================================================="
+    echo "• Origen: ${SOURCE}"
+    if [[ -d "$SOURCE" ]]; then
+        TOTAL_FILES=$(find "$SOURCE" -type f 2>/dev/null | wc -l)
+        TOTAL_SIZE=$(du -sh "$SOURCE" 2>/dev/null | cut -f1)
+        echo "  - Estado: Activo (${TOTAL_FILES} archivos, ${TOTAL_SIZE})"
+    else
+        echo "  - Estado: No existe"
+    fi
+
+    echo ""
+    echo "• Destino Local (Disco Btrfs):"
+    if findmnt -M "$LOCAL_MOUNT" >/dev/null 2>&1; then
+        AVAIL_LOCAL=$(/usr/bin/df -h "$LOCAL_MOUNT" | awk 'END {print $4}')
+        echo "  - Montaje: MONTADO en ${LOCAL_MOUNT} (${AVAIL_LOCAL} disponibles)"
+        if [[ -d "$LOCAL_SNAPSHOTS" ]]; then
+            SNAP_COUNT=$(find "$LOCAL_SNAPSHOTS" -maxdepth 1 -name "gracie_*" 2>/dev/null | wc -l)
+            LATEST_SNAP=$(find "$LOCAL_SNAPSHOTS" -maxdepth 1 -name "gracie_*" -printf "%f\n" 2>/dev/null | sort -r | head -n 1)
+            echo "  - Snapshots Btrfs (CoW): ${SNAP_COUNT}/${MAX_SNAPSHOTS} activos"
+            echo "  - Último snapshot: ${LATEST_SNAP:-Ninguno}"
+        else
+            echo "  - Snapshots Btrfs: Aún sin snapshots creados"
+        fi
+    else
+        echo "  - Montaje: DESCONECTADO / DESMONTADO"
+    fi
+
+    echo ""
+    echo "• Destino Nube (Google Drive):"
+    if command -v rclone >/dev/null 2>&1; then
+        if rclone listremotes | grep -q "gdrive:"; then
+            CLOUD_ABOUT=$(rclone about gdrive: 2>/dev/null | tr '\n' ' | ' || echo "Conectado")
+            echo "  - Remote 'gdrive:': Configurado (${CLOUD_ABOUT})"
+        else
+            echo "  - Remote 'gdrive:': No encontrado en rclone"
+        fi
+        if rclone listremotes | grep -q "gdrive_boveda:"; then
+            echo "  - Remote 'gdrive_boveda:' (Cifrado AES-256): [✓ ACTIVO] -> gdrive:gracie/_boveda_cifrada"
+        fi
+    fi
+
+    echo ""
+    echo "• Servicios Automáticos (systemd):"
+    for unit in "sync-tries.timer" "sync-tries-watcher.service"; do
+        if systemctl is-active --quiet "$unit" 2>/dev/null; then
+            echo "  - $unit: [✓ ACTIVO (Sistema)]"
+        elif systemctl is-enabled --quiet "$unit" 2>/dev/null; then
+            echo "  - $unit: [HABILITADO (en espera)]"
+        else
+            echo "  - $unit: [INACTIVO]"
+        fi
+    done
+
+    echo ""
+    echo "• Archivo de exclusiones:"
+    if [[ -f "$EXCLUDE_FILE" ]]; then
+        RULE_COUNT=$(grep -v '^[[:space:]]*#' "$EXCLUDE_FILE" | grep -v '^[[:space:]]*$' | wc -l)
+        echo "  - ${EXCLUDE_FILE} (${RULE_COUNT} reglas activas)"
+    else
+        echo "  - No encontrado (usando exclusiones básicas integradas)"
+    fi
+
+    if [[ -f "$DELETIONS_LOG" && -s "$DELETIONS_LOG" ]]; then
+        DEL_PENDING_CNT=$(grep -v '^#' "$DELETIONS_LOG" | grep -v '^[[:space:]]*$' | wc -l || true)
+        if [[ $DEL_PENDING_CNT -gt 0 ]]; then
+            echo ""
+            echo "• ⚠️ Archivos pendientes de borrado (${DEL_PENDING_CNT} en cola):"
+            echo "  - Detalle: ${DELETIONS_LOG}"
+            echo "  - Ejecuta '$(basename "$0") --show-deletions' para ver la lista completa."
+        fi
+    fi
+
+    echo ""
+    echo "• Últimas 3 entradas del log (${LOG_FILE}):"
+    if [[ -f "$LOG_FILE" ]]; then
+        tail -n 3 "$LOG_FILE" | sed 's/^/  /'
+    else
+        echo "  (Sin entradas registradas aún)"
+    fi
+    echo "=================================================================="
+    exit 0
+}
+
+# Subcomando status
+if [[ "${1:-}" == "status" || "${1:-}" == "--status" ]]; then
+    if command -v sync-status >/dev/null 2>&1; then
+        sync-status
+        exit 0
+    fi
+    show_status
+fi
+
+# Subcomando deletions / show-deletions
+if [[ "${1:-}" == "deletions" || "${1:-}" == "--deletions" || "${1:-}" == "--show-deletions" ]]; then
+    if [[ -f "$DELETIONS_LOG" && -s "$DELETIONS_LOG" ]]; then
+        cat "$DELETIONS_LOG"
+    else
+        echo "No hay archivos pendientes de borrado registrados en ${DELETIONS_LOG}."
+    fi
+    exit 0
+fi
+
+# Procesar argumentos
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        -n|--dry-run)
+            DRY_RUN=true
+            shift
+            ;;
+        -c|--copy)
+            MODE="copy"
+            shift
+            ;;
+        -l|--local-only)
+            DO_CLOUD=false
+            shift
+            ;;
+        -r|--cloud-only)
+            DO_LOCAL=false
+            shift
+            ;;
+        --all)
+            APPLY_EXCLUDES=false
+            shift
+            ;;
+        --force-delete)
+            FORCE_DELETE=true
+            shift
+            ;;
+        --show-deletions|--deletions|deletions)
+            if [[ -f "$DELETIONS_LOG" && -s "$DELETIONS_LOG" ]]; then
+                cat "$DELETIONS_LOG"
+            else
+                echo "No hay archivos pendientes de borrado registrados en ${DELETIONS_LOG}."
+            fi
+            exit 0
+            ;;
+        -h|--help)
+            show_help
+            exit 0
+            ;;
+        *)
+            echo "Opción no reconocida: $1" >&2
+            show_help
+            exit 1
+            ;;
+    esac
+done
+
+log() {
+    local msg="[$(date '+%Y-%m-%d %H:%M:%S')] $*"
+    echo "$msg"
+    mkdir -p "$(dirname "$LOG_FILE")"
+    echo "$msg" >> "$LOG_FILE"
+}
+
+notify() {
+    local title="$1"
+    local msg="$2"
+    local urgency="${3:-normal}"
+    if command -v notify-send >/dev/null 2>&1 && [[ -n "${WAYLAND_DISPLAY:-${DISPLAY:-}}" ]]; then
+        notify-send -u "$urgency" "$title" "$msg" 2>/dev/null || true
+    fi
+}
+
+# Control de concurrencia con flock
+exec 200>"$LOCK_FILE"
+if ! flock -n 200; then
+    log "INFO: Ya hay una sincronización de sync-tries en progreso. Omitiendo esta ejecución."
+    exit 0
+fi
+
+log "=== Iniciando sincronización de ${SOURCE} ==="
+log "Modo: ${MODE^^} | Simulación: ${DRY_RUN} | Forzar borrado: ${FORCE_DELETE}"
+
+# Validar origen
+if [[ ! -d "$SOURCE" ]]; then
+    log "ERROR: El directorio de origen '${SOURCE}' no existe."
+    notify "Error sync-tries" "El directorio ${SOURCE} no existe" "critical"
+    exit 1
+fi
+
+# Configuración de exclusiones
+RSYNC_EXCLUDES=()
+RCLONE_EXCLUDES=(--exclude "_boveda/**" --exclude "_boveda" --exclude "_boveda_cifrada/**" --exclude "_boveda_cifrada")
+
+if [[ "$APPLY_EXCLUDES" == true ]]; then
+    if [[ -f "$EXCLUDE_FILE" ]]; then
+        RSYNC_EXCLUDES+=(--exclude-from="$EXCLUDE_FILE")
+        RCLONE_EXCLUDES+=(--exclude-from="$EXCLUDE_FILE")
+    else
+        DEFAULT_PATTERNS=("node_modules/" ".venv/" "venv/" "target/" ".cache/" "build/" "dist/" "__pycache__/")
+        for p in "${DEFAULT_PATTERNS[@]}"; do
+            RSYNC_EXCLUDES+=(--exclude "$p")
+            RCLONE_EXCLUDES+=(--exclude "$p")
+        done
+    fi
+fi
+
+# ==============================================================================
+# ESCUDO ANTI-BORRADO (Detección preventiva en modo sync)
+# ==============================================================================
+if [[ "$MODE" == "sync" && "$FORCE_DELETE" == false ]]; then
+    PENDING_DELETIONS=0
+    TOTAL_LOCAL_FILES=$(find "$SOURCE" -type f 2>/dev/null | wc -l)
+    TMP_DEL_LIST=$(mktemp /tmp/sync-tries-deletions.XXXXXX)
+
+    # 0a. Si el disco local está conectado, verificar contra él
+    if [[ "$DO_LOCAL" == true ]] && findmnt -M "$LOCAL_MOUNT" >/dev/null 2>&1 && [[ -d "$LOCAL_DEST" ]]; then
+        rsync -a --dry-run --delete "${RSYNC_EXCLUDES[@]}" "$SOURCE/" "$LOCAL_DEST/" \
+            | grep "^deleting " | grep -v "/$" | sed 's/^deleting //' > "$TMP_DEL_LIST" || true
+        PENDING_DELETIONS=$(wc -l < "$TMP_DEL_LIST" | tr -d ' ')
+    fi
+
+    # 0b. Si el disco local no superó el umbral o no está conectado, verificar en Google Drive
+    if [[ "$DO_CLOUD" == true ]] && [[ $PENDING_DELETIONS -le $MAX_DELETIONS_ABS ]] && command -v rclone >/dev/null 2>&1; then
+        TMP_RCLONE_LIST=$(mktemp /tmp/sync-tries-rclone.XXXXXX)
+        rclone sync "$SOURCE" "$CLOUD_DEST" --dry-run --fast-list -v "${RCLONE_EXCLUDES[@]}" 2>&1 \
+            | grep "Skipped delete as --dry-run is set" \
+            | grep -v -E "(/|[[:space:]])\.git/" \
+            | sed -E 's/.* NOTICE: (.*): Skipped delete as --dry-run is set.*/\1/' \
+            > "$TMP_RCLONE_LIST" || true
+        RCLONE_DEL_COUNT=$(wc -l < "$TMP_RCLONE_LIST" | tr -d ' ')
+        if [[ $RCLONE_DEL_COUNT -gt $PENDING_DELETIONS ]]; then
+            PENDING_DELETIONS=$RCLONE_DEL_COUNT
+            mv "$TMP_RCLONE_LIST" "$TMP_DEL_LIST"
+        else
+            rm -f "$TMP_RCLONE_LIST"
+        fi
+    fi
+
+    if [[ $PENDING_DELETIONS -gt 0 ]]; then
+        mkdir -p "$(dirname "$DELETIONS_LOG")"
+        {
+            echo "# =============================================================================="
+            echo "# REGISTRO DE ARCHIVOS PENDIENTES DE BORRADO - sync-tries"
+            echo "# Fecha: $(date '+%Y-%m-%d %H:%M:%S')"
+            echo "# Total archivos pendientes: ${PENDING_DELETIONS} (Archivos en origen: ${TOTAL_LOCAL_FILES})"
+            echo "# Directorio origen: ${SOURCE}"
+            echo "# Para autorizar este borrado ejecuta: sync-tries --force-delete"
+            echo "# =============================================================================="
+            echo ""
+            cat "$TMP_DEL_LIST"
+        } > "$DELETIONS_LOG"
+
+        log "Verificación de borrado: $PENDING_DELETIONS archivo(s) pendientes de eliminación."
+        ABORT_DELETE=false
+
+        if [[ $PENDING_DELETIONS -gt $MAX_DELETIONS_ABS ]]; then
+            ABORT_DELETE=true
+        elif [[ $TOTAL_LOCAL_FILES -gt 5 ]]; then
+            PCT=$(( (PENDING_DELETIONS * 100) / (TOTAL_LOCAL_FILES + PENDING_DELETIONS) ))
+            if [[ $PCT -gt $MAX_DELETIONS_PCT ]]; then
+                ABORT_DELETE=true
+            fi
+        fi
+
+        if [[ "$ABORT_DELETE" == true ]]; then
+            ALERT_MSG="ALERTA: Se detectó borrado masivo inusual ($PENDING_DELETIONS archivos). Sincronización detenida por seguridad."
+            log "SEGURIDAD: $ALERT_MSG"
+            notify "🛡️ Escudo sync-tries activado" "$ALERT_MSG" "critical"
+            rm -f "$TMP_DEL_LIST"
+            exit 2
+        fi
+    fi
+    rm -f "$TMP_DEL_LIST"
+fi
+
+ERRORS=0
+LOCAL_SYNCED=false
+CLOUD_SYNCED=false
+
+# ==============================================================================
+# PASO 1: SINCRONIZACIÓN LOCAL HACIA ALMACEN_BTRFS (con Snapshots CoW)
+# ==============================================================================
+if [[ "$DO_LOCAL" == true ]]; then
+    if findmnt -M "$LOCAL_MOUNT" >/dev/null 2>&1; then
+        echo ""
+        log "--- 1. Sincronizando hacia disco externo Btrfs (${LOCAL_DEST}) ---"
+        mkdir -p "$LOCAL_DEST" "$LOCAL_SNAPSHOTS"
+
+        RSYNC_CMD=("rsync" "-avh" "--info=progress2,stats2")
+        if [[ "$DRY_RUN" == true ]]; then
+            RSYNC_CMD+=("-n")
+        fi
+        if [[ "$MODE" == "sync" ]]; then
+            RSYNC_CMD+=("--delete-delay")
+        fi
+        RSYNC_CMD+=("${RSYNC_EXCLUDES[@]}" "$SOURCE/" "$LOCAL_DEST/")
+
+        log "Ejecutando rsync hacia destino local..."
+        if "${RSYNC_CMD[@]}"; then
+            log "Sincronización local completada correctamente."
+            LOCAL_SYNCED=true
+
+            # Crear Snapshot Btrfs si no es simulación
+            if [[ "$DRY_RUN" == false ]]; then
+                STAMP=$(date '+%Y%m%d_%H%M%S')
+                SNAP_PATH="${LOCAL_SNAPSHOTS}/gracie_${STAMP}"
+                if command -v btrfs >/dev/null 2>&1 && [[ -d "$LOCAL_DEST" ]]; then
+                    if sudo btrfs subvolume snapshot -r "$LOCAL_DEST" "$SNAP_PATH" >/dev/null 2>&1; then
+                        log "Snapshot Btrfs creado: $(basename "$SNAP_PATH")"
+                    fi
+                fi
+            fi
+        else
+            log "ERROR en sincronización local con rsync."
+            ERRORS=$((ERRORS + 1))
+        fi
+    else
+        log "AVISO: Disco local (${LOCAL_MOUNT}) no montado. Omitiendo respaldo local."
+    fi
+fi
+
+# ==============================================================================
+# PASO 2: SINCRONIZACIÓN HACIA GOOGLE DRIVE (rclone)
+# ==============================================================================
+if [[ "$DO_CLOUD" == true ]] && command -v rclone >/dev/null 2>&1; then
+    echo ""
+    log "--- 2. Sincronizando hacia Google Drive (${CLOUD_DEST}) ---"
+    RCLONE_CMD=("rclone")
+    if [[ "$MODE" == "sync" ]]; then
+        RCLONE_CMD+=("sync")
+    else
+        RCLONE_CMD+=("copy")
+    fi
+    RCLONE_CMD+=("$SOURCE" "$CLOUD_DEST" -P --fast-list --drive-use-trash "${RCLONE_EXCLUDES[@]}")
+    if [[ "$DRY_RUN" == true ]]; then
+        RCLONE_CMD+=(--dry-run)
+    fi
+
+    log "Ejecutando rclone hacia ${CLOUD_DEST}..."
+    if "${RCLONE_CMD[@]}"; then
+        log "Sincronización con Google Drive completada correctamente."
+        CLOUD_SYNCED=true
+    else
+        log "ERROR al sincronizar con rclone hacia ${CLOUD_DEST}."
+        ERRORS=$((ERRORS + 1))
+    fi
+
+    # Sincronización de Bóveda Cifrada si existe gdrive_boveda:
+    if [[ -d "$VAULT_SOURCE" ]] && rclone listremotes | grep -q "gdrive_boveda:"; then
+        echo ""
+        log "--- 2b. Sincronizando Bóveda Cifrada (AES-256) hacia Google Drive ---"
+        RCLONE_VAULT_CMD=("rclone" "$MODE" "$VAULT_SOURCE" "gdrive_boveda:" -P --drive-use-trash)
+        [[ "$DRY_RUN" == true ]] && RCLONE_VAULT_CMD+=(--dry-run)
+        if "${RCLONE_VAULT_CMD[@]}"; then
+            log "Bóveda cifrada sincronizada exitosamente."
+        else
+            log "ERROR al sincronizar la bóveda cifrada."
+            ERRORS=$((ERRORS + 1))
+        fi
+    fi
+fi
+
+echo ""
+if [[ $ERRORS -eq 0 ]]; then
+    [[ "$DRY_RUN" == false ]] && rm -f "$DELETIONS_LOG" 2>/dev/null || true
+    STATUS_MSG="Sincronización finalizada exitosamente."
+    log "=== $STATUS_MSG ==="
+    [[ "$DRY_RUN" == false ]] && notify "sync-tries" "$STATUS_MSG" "normal"
+    exit 0
+else
+    log "=== Sincronización finalizada con ERRORES ($ERRORS). ==="
+    notify "Error sync-tries" "Se encontraron $ERRORS errores al sincronizar" "critical"
+    exit 1
+fi

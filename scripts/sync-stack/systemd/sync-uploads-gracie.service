@@ -1,0 +1,12 @@
+[Unit]
+Description=Sincronizacion de transferencias y subidas (/z-drive/uploads-gracie)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+Environment=RCLONE_CONFIG=/etc/rclone/rclone.conf
+ExecStart=/usr/local/bin/sync-uploads-gracie
+StandardOutput=journal
+StandardError=journal
+Nice=10

@@ -1,0 +1,12 @@
+[Unit]
+Description=Sincronizacion automatica de /z-drive/tries hacia Google Drive y Btrfs
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+Environment=RCLONE_CONFIG=/etc/rclone/rclone.conf
+ExecStart=/usr/local/bin/sync-tries
+StandardOutput=journal
+StandardError=journal
+Nice=10

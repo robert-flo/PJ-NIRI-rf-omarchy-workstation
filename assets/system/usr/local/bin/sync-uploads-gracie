@@ -1,0 +1,131 @@
+#!/usr/bin/env bash
+#
+# sync-uploads-gracie: Sincronización robusta para Uploads-Gracie hacia Google Drive
+# Adaptado para espacio colaborativo multi-usuario /z-drive
+#
+
+set -eo pipefail
+
+LOCAL_DIR="${Z_DRIVE_UPLOADS:-/z-drive/uploads-gracie}"
+CLOUD_DEST="gdrive:Uploads-Gracie"
+CONFIG_FILE="/etc/rclone/sync-uploads-gracie.conf"
+USER_CONFIG="${HOME}/.config/sync-uploads-gracie/config"
+
+STATE_DIR="/z-drive/.sync-state"
+mkdir -p "$STATE_DIR"
+LOG_FILE="${STATE_DIR}/sync-uploads-gracie.log"
+LOCK_FILE="${STATE_DIR}/sync-uploads-gracie.lock"
+
+ROLE="master"
+if [[ -f "$CONFIG_FILE" ]]; then
+    # shellcheck disable=SC1090
+    source "$CONFIG_FILE"
+elif [[ -f "$USER_CONFIG" ]]; then
+    # shellcheck disable=SC1090
+    source "$USER_CONFIG"
+fi
+
+DRY_RUN=false
+EXPLICIT_ROLE=""
+
+log() {
+    local msg="[$(date '+%Y-%m-%d %H:%M:%S')] [$ROLE] $*"
+    echo "$msg"
+    echo "$msg" >> "$LOG_FILE"
+}
+
+notify() {
+    local title="$1"
+    local msg="$2"
+    local urgency="${3:-normal}"
+    if command -v notify-send >/dev/null 2>&1 && [[ -n "${WAYLAND_DISPLAY:-${DISPLAY:-}}" ]]; then
+        notify-send -u "$urgency" -a "sync-uploads-gracie" "$title" "$msg" 2>/dev/null || true
+    fi
+}
+
+show_status() {
+    if command -v sync-status >/dev/null 2>&1; then
+        sync-status
+        exit 0
+    fi
+    echo "=================================================================="
+    echo "          ESTADO DE SINCRONIZACIÓN: UPLOADS-GRACIE                "
+    echo "=================================================================="
+    echo "• Rol: $ROLE"
+    echo "• Directorio Local: $LOCAL_DIR"
+    echo "• Destino Remoto:   $CLOUD_DEST"
+    exit 0
+}
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --master)
+            EXPLICIT_ROLE="master"
+            shift
+            ;;
+        --replica|--hija)
+            EXPLICIT_ROLE="replica"
+            shift
+            ;;
+        -n|--dry-run)
+            DRY_RUN=true
+            shift
+            ;;
+        status|--status)
+            show_status
+            ;;
+        -h|--help)
+            echo "Uso: $(basename "$0") [--master | --replica] [-n|--dry-run] [status]"
+            exit 0
+            ;;
+        *)
+            echo "Opción desconocida: $1" >&2
+            exit 1
+            ;;
+    esac
+done
+
+[[ -n "$EXPLICIT_ROLE" ]] && ROLE="$EXPLICIT_ROLE"
+
+exec 202>"$LOCK_FILE"
+if ! flock -n 202; then
+    log "INFO: Sincronización de Uploads-Gracie ya en progreso. Omitiendo."
+    exit 0
+fi
+
+mkdir -p "$LOCAL_DIR"
+log "=== Iniciando sincronización de Uploads-Gracie (Rol: ${ROLE^^}) ==="
+
+RCLONE_FLAGS=(
+    "--drive-chunk-size=32M"
+    "--transfers=4"
+    "--checkers=8"
+    "--fast-list"
+    "--drive-use-trash=true"
+    "--stats=10s"
+    "-v"
+)
+
+[[ "$DRY_RUN" == true ]] && RCLONE_FLAGS+=(--dry-run)
+
+if [[ "$ROLE" == "master" ]]; then
+    log "Modo MAESTRO: Sincronizando $LOCAL_DIR ➔ $CLOUD_DEST"
+    if rclone sync "$LOCAL_DIR" "$CLOUD_DEST" "${RCLONE_FLAGS[@]}"; then
+        log "Uploads-Gracie sincronizado exitosamente hacia Google Drive."
+        notify "sync-uploads-gracie" "Subidas sincronizadas hacia la nube" "normal"
+    else
+        log "ERROR en sincronización de Uploads-Gracie."
+        notify "sync-uploads-gracie" "Error al sincronizar subidas" "critical"
+        exit 1
+    fi
+else
+    log "Modo RÉPLICA: Descargando $CLOUD_DEST ➔ $LOCAL_DIR"
+    if rclone sync "$CLOUD_DEST" "$LOCAL_DIR" "${RCLONE_FLAGS[@]}"; then
+        log "Uploads-Gracie descargado exitosamente desde Google Drive."
+        notify "sync-uploads-gracie" "Subidas actualizadas desde la nube" "normal"
+    else
+        log "ERROR al descargar Uploads-Gracie."
+        notify "sync-uploads-gracie" "Error al actualizar subidas" "critical"
+        exit 1
+    fi
+fi

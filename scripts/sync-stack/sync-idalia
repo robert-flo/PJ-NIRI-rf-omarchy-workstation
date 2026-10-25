@@ -1,0 +1,147 @@
+#!/usr/bin/env bash
+#
+# sync-idalia: Sincronización robusta con arquitectura Master-Hijas para Google Drive
+# En PC Maestro: Sube cambios hacia Google Drive (PC ➔ Drive)
+# En PC Hija:    Descarga cambios desde Google Drive (Drive ➔ PC)
+# Adaptado para espacio colaborativo multi-usuario /z-drive
+#
+
+set -eo pipefail
+
+LOCAL_DIR="${Z_DRIVE_IDALIA:-/z-drive/idalia}"
+CLOUD_DEST="gdrive:Idalia"
+CONFIG_FILE="/etc/rclone/sync-idalia.conf"
+USER_CONFIG="${HOME}/.config/sync-idalia/config"
+
+STATE_DIR="/z-drive/.sync-state"
+mkdir -p "$STATE_DIR"
+LOG_FILE="${STATE_DIR}/sync-idalia.log"
+LOCK_FILE="${STATE_DIR}/sync-idalia.lock"
+
+# Configuración de Rol
+ROLE="master"
+if [[ -f "$CONFIG_FILE" ]]; then
+    # shellcheck disable=SC1090
+    source "$CONFIG_FILE"
+elif [[ -f "$USER_CONFIG" ]]; then
+    # shellcheck disable=SC1090
+    source "$USER_CONFIG"
+fi
+
+MAX_DELETIONS_ABS=100
+MAX_DELETIONS_PCT=40
+
+DRY_RUN=false
+FORCE_DELETE=false
+EXPLICIT_ROLE=""
+
+log() {
+    local msg="[$(date '+%Y-%m-%d %H:%M:%S')] [$ROLE] $*"
+    echo "$msg"
+    echo "$msg" >> "$LOG_FILE"
+}
+
+notify() {
+    local title="$1"
+    local msg="$2"
+    local urgency="${3:-normal}"
+    if command -v notify-send >/dev/null 2>&1 && [[ -n "${WAYLAND_DISPLAY:-${DISPLAY:-}}" ]]; then
+        notify-send -u "$urgency" -a "sync-idalia" "$title" "$msg" 2>/dev/null || true
+    fi
+}
+
+show_status() {
+    if command -v sync-status >/dev/null 2>&1; then
+        sync-status
+        exit 0
+    fi
+    echo "=================================================================="
+    echo "               ESTADO DE SINCRONIZACIÓN: IDALIA                   "
+    echo "=================================================================="
+    if [[ "$ROLE" == "master" ]]; then
+        echo "• Rol de este equipo: MAESTRO (/z-drive ➔ Google Drive)"
+    else
+        echo "• Rol de este equipo: HIJA / RÉPLICA (Google Drive ➔ /z-drive)"
+    fi
+    echo "• Directorio Local: $LOCAL_DIR"
+    echo "• Destino Remoto:   $CLOUD_DEST"
+    exit 0
+}
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --master)
+            EXPLICIT_ROLE="master"
+            shift
+            ;;
+        --replica|--hija)
+            EXPLICIT_ROLE="replica"
+            shift
+            ;;
+        -n|--dry-run)
+            DRY_RUN=true
+            shift
+            ;;
+        --force-delete)
+            FORCE_DELETE=true
+            shift
+            ;;
+        status|--status)
+            show_status
+            ;;
+        -h|--help)
+            echo "Uso: $(basename "$0") [--master | --replica] [-n|--dry-run] [--force-delete] [status]"
+            exit 0
+            ;;
+        *)
+            echo "Opción desconocida: $1" >&2
+            exit 1
+            ;;
+    esac
+done
+
+[[ -n "$EXPLICIT_ROLE" ]] && ROLE="$EXPLICIT_ROLE"
+
+exec 201>"$LOCK_FILE"
+if ! flock -n 201; then
+    log "INFO: Sincronización de Idalia ya en progreso. Omitiendo."
+    exit 0
+fi
+
+mkdir -p "$LOCAL_DIR"
+log "=== Iniciando sincronización de Idalia (Rol: ${ROLE^^}) ==="
+
+RCLONE_FLAGS=(
+    "--drive-chunk-size=32M"
+    "--transfers=8"
+    "--checkers=16"
+    "--fast-list"
+    "--drive-use-trash=true"
+    "--stats=15s"
+    "--stats-one-line"
+    "-v"
+)
+
+[[ "$DRY_RUN" == true ]] && RCLONE_FLAGS+=(--dry-run)
+
+if [[ "$ROLE" == "master" ]]; then
+    log "Modo MAESTRO: Sincronizando $LOCAL_DIR ➔ $CLOUD_DEST"
+    if rclone sync "$LOCAL_DIR" "$CLOUD_DEST" "${RCLONE_FLAGS[@]}"; then
+        log "Sincronización MAESTRO completada exitosamente."
+        notify "sync-idalia" "Biblioteca multimedia sincronizada hacia la nube" "normal"
+    else
+        log "ERROR en sincronización MAESTRO."
+        notify "sync-idalia" "Error al sincronizar Idalia hacia la nube" "critical"
+        exit 1
+    fi
+else
+    log "Modo HIJA / RÉPLICA: Descargando $CLOUD_DEST ➔ $LOCAL_DIR"
+    if rclone sync "$CLOUD_DEST" "$LOCAL_DIR" "${RCLONE_FLAGS[@]}"; then
+        log "Sincronización RÉPLICA completada exitosamente."
+        notify "sync-idalia" "Biblioteca multimedia actualizada desde la nube" "normal"
+    else
+        log "ERROR en sincronización RÉPLICA."
+        notify "sync-idalia" "Error al actualizar Idalia desde la nube" "critical"
+        exit 1
+    fi
+fi

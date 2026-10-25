@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+LOGFILE="/tmp/rclone-moved4.log"
+
+if [ ! -f "$LOGFILE" ]; then
+    echo "El archivo de registro $LOGFILE aún no existe. Se creará al iniciar la subida."
+    exit 0
+fi
+
+tail -n 50 -f "$LOGFILE"

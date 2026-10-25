@@ -1,0 +1,47 @@
+# ==============================================================================
+# LISTA DE EXCLUSIONES PARA SINCRONIZACIÓN (sync-tries)
+# ==============================================================================
+# Este archivo es leído automáticamente por rsync y rclone en cada sincronización.
+# Al estar dentro de ~/Work/tries/_estrategia_de_sincronizacion, se respalda
+# en Google Drive y disco local, persistiendo a través de formateos o nuevas PCs.
+#
+# Reglas de sintaxis:
+# - Escribe una carpeta o archivo por línea.
+# - Las carpetas deben terminar con diagonal '/' (ej: mi_carpeta/)
+# - Las líneas que empiezan con '#' son comentarios y se ignoran.
+# - Para agregar una carpeta: simplemente añade una nueva línea al final.
+# - Para reactivar la sincronización de una carpeta: bórrala o ponle un '#' al inicio.
+# ==============================================================================
+
+# Entornos virtuales y dependencias
+node_modules/
+.venv/
+venv/
+.gradle/
+vendor/
+.bundle/
+.direnv/
+
+# Worktrees y ramas temporales de git (deben terminar con '/' para no excluir scripts ni archivos de código)
+.wt-*/
+.wt-*
+*-worktree*/
+*-worktree-*/
+*worktree-*/
+
+# Carpetas de compilación y salida (Builds)
+target/
+build/
+dist/
+out/
+.next/
+.nuxt/
+cmake-build-*/
+_site/
+
+# Cachés temporales
+.cache/
+__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/

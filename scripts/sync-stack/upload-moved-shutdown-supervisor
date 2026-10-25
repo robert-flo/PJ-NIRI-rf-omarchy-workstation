@@ -1,0 +1,88 @@
+#!/usr/bin/env bash
+set -uo pipefail
+
+SERVICE="upload-moved3-gdrive.service"
+LOGFILE="/tmp/rclone-moved4.log"
+LOCKFILE="/tmp/rclone-moved4.lock"
+SUPERVISOR_LOG="/tmp/upload-shutdown-supervisor.log"
+
+log() {
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" | tee -a "$SUPERVISOR_LOG"
+}
+
+is_running() {
+    local active_state main_pid
+    active_state=$(systemctl --user show -p ActiveState "$SERVICE" 2>/dev/null | cut -d= -f2 || true)
+    if [ "$active_state" = "activating" ] || [ "$active_state" = "active" ]; then
+        return 0
+    fi
+
+    # Comprobación adicional del lockfile
+    if [ -f "$LOCKFILE" ]; then
+        if ! flock -n "$LOCKFILE" true 2>/dev/null; then
+            return 0
+        fi
+    fi
+
+    return 1
+}
+
+log "=== Supervisor de subida y apagado automático iniciado ==="
+
+LAST_REPORT_TIME=0
+
+while true; do
+    if is_running; then
+        NOW=$(date +%s)
+        # Cada 5 minutos (300s) registrar progreso en el log del supervisor
+        if (( NOW - LAST_REPORT_TIME >= 300 )); then
+            LAST_REPORT_TIME=$NOW
+            PROGRESS=$(grep -A 2 "Transferred:" "$LOGFILE" 2>/dev/null | tail -n 3 | tr '\n' ' ' || echo "En curso")
+            log "Proceso en ejecución. Progreso: $PROGRESS"
+        fi
+        sleep 20
+        continue
+    fi
+
+    # El proceso ha dejado de correr. Diagnosticar estado:
+    log "El proceso ha finalizado. Verificando resultados..."
+    
+    EXIT_STATUS=$(systemctl --user show -p ExecMainStatus "$SERVICE" 2>/dev/null | cut -d= -f2 || echo "unknown")
+    RESULT=$(systemctl --user show -p Result "$SERVICE" 2>/dev/null | cut -d= -f2 || echo "unknown")
+    
+    HAS_EXIT_ZERO=""
+    if [ -f "$LOGFILE" ]; then
+        HAS_EXIT_ZERO=$(tail -n 30 "$LOGFILE" | grep -E "^EXIT:0$" || true)
+    fi
+
+    log "Diagnóstico de finalización: ExecMainStatus=$EXIT_STATUS, Result=$RESULT, LogExitZero='$HAS_EXIT_ZERO'"
+
+    # Criterio estricto: 100% de éxito sin errores
+    if [ "$EXIT_STATUS" = "0" ] && [ "$RESULT" = "success" ] && [ -n "$HAS_EXIT_ZERO" ]; then
+        log "================================================================="
+        log "¡ÉXITO TOTAL! La transferencia de MOVED_4 se completó al 100%."
+        log "Procediendo a apagar el equipo tal como fue expresamente autorizado."
+        log "================================================================="
+        
+        if command -v omarchy >/dev/null 2>&1; then
+            omarchy notification send -u critical --app-name "Rclone" "Transferencia 100% Exitosa" "Apagando el equipo en 15 segundos..." 2>/dev/null || true
+        fi
+        
+        sync
+        sleep 15
+        
+        systemctl poweroff || busctl call org.freedesktop.login1 /org/freedesktop/login1 org.freedesktop.login1.Manager PowerOff b true
+        exit 0
+    else
+        log "ADVERTENCIA: El servicio se detuvo con error o desconexión (Status: $EXIT_STATUS, Result: $RESULT)."
+        log "Reintentando activación en 30 segundos..."
+        
+        if command -v omarchy >/dev/null 2>&1; then
+            omarchy notification send -u critical --app-name "Rclone" "Interrupción detectada" "Reactivando transferencia a Google Drive..." 2>/dev/null || true
+        fi
+        
+        sleep 30
+        systemctl --user start --no-block "$SERVICE"
+        sleep 15
+    fi
+done

@@ -1,0 +1,15 @@
+[Unit]
+Description=Demonio reactivo por inactividad (5 min debounce) para /z-drive/tries
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+Environment=RCLONE_CONFIG=/etc/rclone/rclone.conf
+ExecStart=/usr/local/bin/sync-tries-watcher
+Restart=on-failure
+RestartSec=10
+Nice=15
+
+[Install]
+WantedBy=multi-user.target

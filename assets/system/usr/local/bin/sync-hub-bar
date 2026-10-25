@@ -1,0 +1,148 @@
+#!/usr/bin/env bash
+#
+# sync-hub-bar: Generador de estado JSON para el Popover GUI de Quickshell en Omarchy
+# Adaptado para espacio colaborativo multi-usuario /z-drive
+#
+
+set -eo pipefail
+
+STATE_DIR="/z-drive/.sync-state"
+LOCAL_MOUNT=$(findmnt -n -o TARGET /run/media/*/ALMACEN_BTRFS 2>/dev/null | head -n 1 || echo "/run/media/omarchy/ALMACEN_BTRFS")
+
+# Detección del rol de Idalia
+IDALIA_ROLE="master"
+if [[ -f "/etc/rclone/sync-idalia.conf" ]]; then
+  # shellcheck disable=SC1090
+  source "/etc/rclone/sync-idalia.conf"
+elif [[ -f "${HOME}/.config/sync-idalia/config" ]]; then
+  # shellcheck disable=SC1090
+  source "${HOME}/.config/sync-idalia/config"
+fi
+
+IDALIA_LABEL="Idalia (Maestro)"
+IDALIA_TARGET="/z-drive/idalia ➔ gdrive:Idalia"
+if [[ "$IDALIA_ROLE" == "replica" ]]; then
+  IDALIA_LABEL="Idalia (Hija/Réplica)"
+  IDALIA_TARGET="gdrive:Idalia ➔ /z-drive/idalia"
+fi
+
+# Detección del rol de Uploads-Gracie
+UPLOADS_ROLE="master"
+if [[ -f "/etc/rclone/sync-uploads-gracie.conf" ]]; then
+  # shellcheck disable=SC1090
+  source "/etc/rclone/sync-uploads-gracie.conf"
+elif [[ -f "${HOME}/.config/sync-uploads-gracie/config" ]]; then
+  # shellcheck disable=SC1090
+  source "${HOME}/.config/sync-uploads-gracie/config"
+fi
+
+UPLOADS_LABEL="Uploads-Gracie (Maestro)"
+UPLOADS_TARGET="/z-drive/uploads-gracie ➔ gdrive:Uploads-Gracie"
+if [[ "$UPLOADS_ROLE" == "replica" ]]; then
+  UPLOADS_LABEL="Uploads-Gracie (Hija/Réplica)"
+  UPLOADS_TARGET="gdrive:Uploads-Gracie ➔ /z-drive/uploads-gracie"
+fi
+
+# ==============================================================================
+# REGISTRO DE SINCRONIZACIONES
+# Formato: id | Nombre | Ruta local | Destino | Script | Log | Patrón pgrep
+# ==============================================================================
+SYNCS=(
+  "tries|Tries (Código)|/z-drive/tries|gdrive:gracie + Btrfs|sync-tries|${STATE_DIR}/sync-tries.log|(bash .*/sync-tries( |$)|rclone (sync|copy) .*/tries)"
+  "idalia|${IDALIA_LABEL}|/z-drive/idalia|${IDALIA_TARGET}|sync-idalia|${STATE_DIR}/sync-idalia.log|(bash .*/sync-idalia( |$)|rclone sync .*/idalia)"
+  "uploads-gracie|${UPLOADS_LABEL}|/z-drive/uploads-gracie|${UPLOADS_TARGET}|sync-uploads-gracie|${STATE_DIR}/sync-uploads-gracie.log|(bash .*/sync-uploads-gracie( |$)|rclone sync .*/uploads-gracie)"
+)
+
+TOTAL_COUNT=${#SYNCS[@]}
+SYNCING_COUNT=0
+WARNING_COUNT=0
+ERROR_COUNT=0
+ACTIVE_NAME=""
+
+ITEMS_JSON=()
+
+for item in "${SYNCS[@]}"; do
+  IFS='|' read -r id name path target script_sync log_file pgrep_pat <<< "$item"
+  
+  is_syncing=false
+  status="ok"
+  status_icon="🟢"
+  status_text="Al día"
+
+  if pgrep -f "$pgrep_pat" >/dev/null 2>&1; then
+    is_syncing=true
+    status="syncing"
+    status_icon="🔄"
+    status_text="Sincronizando..."
+    SYNCING_COUNT=$((SYNCING_COUNT + 1))
+    ACTIVE_NAME="$name"
+  else
+    if [[ -f "$log_file" ]]; then
+      last_alert=$(tail -n 15 "$log_file" 2>/dev/null | grep -E "SEGURIDAD: ALERTA|finalizada exitosamente|finalizada con|completada exitosamente|ERROR" | tail -n 1 || true)
+      if echo "$last_alert" | grep -q "SEGURIDAD: ALERTA"; then
+        status="warning"
+        status_icon="🛡️"
+        status_text="Escudo activado"
+        WARNING_COUNT=$((WARNING_COUNT + 1))
+        ACTIVE_NAME="$name"
+      elif echo "$last_alert" | grep -qiE "finalizada con [1-9]|ERROR"; then
+        status="error"
+        status_icon="🔴"
+        status_text="Error en sync"
+        ERROR_COUNT=$((ERROR_COUNT + 1))
+        ACTIVE_NAME="$name"
+      fi
+    else
+      status_icon="⚪"
+      status_text="Sin historial"
+    fi
+  fi
+
+  ITEMS_JSON+=("{\"id\":\"$id\",\"name\":\"$name\",\"path\":\"$path\",\"target\":\"$target\",\"status\":\"$status\",\"status_icon\":\"$status_icon\",\"status_text\":\"$status_text\",\"syncing\":$is_syncing,\"cmd_sync\":\"$script_sync\"}")
+done
+
+# Evaluar etiqueta consolidada para la barra
+bar_class="ok"
+if [[ $SYNCING_COUNT -gt 0 ]]; then
+  bar_class="syncing active"
+  if [[ $SYNCING_COUNT -eq 1 ]]; then
+    short_name=$(echo "$ACTIVE_NAME" | cut -d' ' -f1)
+    bar_text="🔄 $short_name"
+  else
+    bar_text="🔄 ($SYNCING_COUNT)"
+  fi
+elif [[ $WARNING_COUNT -gt 0 ]]; then
+  bar_class="warning"
+  bar_text="🛡️ Alerta"
+elif [[ $ERROR_COUNT -gt 0 ]]; then
+  bar_class="error"
+  bar_text="🔴 Error"
+else
+  if findmnt -M "$LOCAL_MOUNT" >/dev/null 2>&1; then
+    bar_text="🟢 $TOTAL_COUNT/$TOTAL_COUNT 💾☁️"
+  else
+    bar_text="🟢 $TOTAL_COUNT/$TOTAL_COUNT ☁️"
+  fi
+fi
+
+# Tooltip enriquecido
+TOOLTIP="Centro de Sincronización /z-drive\n• Tareas configuradas: $TOTAL_COUNT\n"
+if findmnt -M "$LOCAL_MOUNT" >/dev/null 2>&1; then
+  TOOLTIP="${TOOLTIP}• Disco Btrfs: Conectado\n"
+else
+  TOOLTIP="${TOOLTIP}• Disco Btrfs: Desconectado\n"
+fi
+TOOLTIP="${TOOLTIP}\nClic izquierdo: Abrir menú interactivo\nClic derecho: Ver detalles en terminal"
+
+ITEMS_ARRAY=$(IFS=,; echo "[${ITEMS_JSON[*]}]")
+
+cat << JSON_OUT
+{
+  "text": "$bar_text",
+  "class": "$bar_class",
+  "tooltip": "$TOOLTIP",
+  "syncing_count": $SYNCING_COUNT,
+  "total_count": $TOTAL_COUNT,
+  "items": $ITEMS_ARRAY
+}
+JSON_OUT
