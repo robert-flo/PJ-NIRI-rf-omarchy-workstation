@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # fix_shared_dir_perms.sh
-# Repairs permissions for /z and accepts an explicit target from a watcher.
-DEFAULT_SHARED_DIR="/z"
+# Repairs permissions for /z-drive and accepts an explicit target from a watcher.
+DEFAULT_SHARED_DIR="/z-drive"
 DEFAULT_GROUP="wheel"
 SHARED_DIR="${1:-$DEFAULT_SHARED_DIR}"
 GROUP="${2:-$DEFAULT_GROUP}"

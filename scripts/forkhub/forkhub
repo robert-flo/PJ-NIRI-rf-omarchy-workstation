@@ -1,0 +1,500 @@
+#!/usr/bin/env bash
+#
+# forkhub: Suite Unificada y Declarativa de Gestión de Flota de Forks y Repositorios
+# Gestiona el monitoreo, sincronización e idempotencia de repositorios y forks del sistema
+# basada en definiciones modulares en /etc/forkhub/repos.d/*.conf
+#
+
+set -eo pipefail
+
+CONF_DIR="/etc/forkhub/repos.d"
+LOG_FILE="/var/log/forkhub.log"
+
+# Paleta de colores si hay TTY
+if [[ -t 1 ]]; then
+    BOLD="\033[1m"
+    DIM="\033[2m"
+    GREEN="\033[32m"
+    YELLOW="\033[33m"
+    CYAN="\033[36m"
+    RED="\033[31m"
+    MAGENTA="\033[35m"
+    RESET="\033[0m"
+else
+    BOLD="" DIM="" GREEN="" YELLOW="" CYAN="" RED="" MAGENTA="" RESET=""
+fi
+
+log() {
+    local target="${CURRENT_TARGET:-forkhub}"
+    local msg="[$(date "+%Y-%m-%d %H:%M:%S")] [$target] $*"
+    echo -e "$msg"
+    if [[ -w "$LOG_FILE" ]] || [[ ! -e "$LOG_FILE" && -w "/var/log" ]]; then
+        echo "$msg" >> "$LOG_FILE" 2>/dev/null || true
+    fi
+}
+
+notify() {
+    local title="$1"
+    local msg="$2"
+    local urgency="${3:-normal}"
+    
+    # Notificar al entorno de usuario actual si existe DISPLAY/WAYLAND_DISPLAY
+    if command -v notify-send >/dev/null 2>&1 && [[ -n "${WAYLAND_DISPLAY:-${DISPLAY:-}}" ]]; then
+        notify-send -u "$urgency" "$title" "$msg" 2>/dev/null || true
+    fi
+
+    # Si se ejecuta como servicio systemd/root, emitir a los escritorios Wayland activos
+    if [[ -z "${WAYLAND_DISPLAY:-${DISPLAY:-}}" ]] && command -v notify-send >/dev/null 2>&1; then
+        for u in /run/user/*; do
+            local uid=$(basename "$u")
+            if [[ "$uid" =~ ^[0-9]+$ ]] && [[ -e "$u/bus" ]]; then
+                sudo -u "#$uid" DBUS_SESSION_BUS_ADDRESS="unix:path=$u/bus" \
+                    notify-send -u "$urgency" "$title" "$msg" 2>/dev/null || true
+            fi
+        done
+    fi
+}
+
+ensure_safe_directory() {
+    local dir="$1"
+    if ! git config --system --get-all safe.directory 2>/dev/null | grep -Fxq "$dir"; then
+        git config --system --add safe.directory "$dir" 2>/dev/null || true
+    fi
+}
+
+show_help() {
+    cat << EOF
+${BOLD}Forkhub — Suite Declarativa de Gestión de Flota de Forks y Repositorios${RESET}
+
+Uso:
+  forkhub [COMANDO] [OBJETIVO] [OPCIONES]
+
+Comandos principales:
+  ${CYAN}status${RESET}                       Muestra el dashboard global de repositorios y forks.
+  ${CYAN}update [repo|--all]${RESET}          Actualiza idempotentemente los repositorios configurados.
+  ${CYAN}add <nombre> <ruta>${RESET}          Registra un nuevo repositorio o fork en la flota.
+  ${CYAN}remove <nombre>${RESET}              Retira un repositorio de la flota (no borra archivos).
+  ${CYAN}list / repos${RESET}                 Lista los repositorios registrados y sus rutas.
+
+Opciones de actualización (para 'forkhub update'):
+  -n, --dry-run                Modo simulación: consulta remotos sin alterar árboles locales.
+  -g, --group <grupo>          Actualiza únicamente repositorios del grupo indicado (ej. 'neovim').
+  -a, --all                    Actualiza todos los repositorios con auto_update activado (por defecto).
+  -f, --force                  Fuerza el fetch/check incluso si hay advertencias previas.
+  -h, --help                   Muestra esta ayuda.
+
+Ejemplos:
+  forkhub status
+  forkhub update --group neovim
+  forkhub update rvim
+  forkhub update --all --dry-run
+  forkhub add nyxuri /z/nyxuri personal origin shell
+EOF
+}
+
+load_config() {
+    local conf="$1"
+    name=""
+    description=""
+    repo_dir=""
+    remote="origin"
+    branch="main"
+    group="general"
+    auto_update=true
+    post_update=""
+
+    # shellcheck disable=SC1090
+    source "$conf"
+
+    if [[ -z "$name" || -z "$repo_dir" ]]; then
+        return 1
+    fi
+    return 0
+}
+
+cmd_list() {
+    echo -e "${BOLD}Repositorios registrados en Forkhub (/etc/forkhub/repos.d/):${RESET}"
+    printf "  %-15s %-10s %-15s %-10s %s\n" "NOMBRE" "GRUPO" "RAMA" "AUTO-SYNC" "RUTA LOCAL"
+    echo "  ----------------------------------------------------------------------------------"
+    shopt -s nullglob
+    local confs=("$CONF_DIR"/*.conf)
+    shopt -u nullglob
+
+    if [[ ${#confs[@]} -eq 0 ]]; then
+        echo -e "  ${YELLOW}No hay repositorios configurados.${RESET}"
+        return 0
+    fi
+
+    for c in "${confs[@]}"; do
+        if load_config "$c"; then
+            local auto_str="Sí"
+            [[ "$auto_update" == "false" ]] && auto_str="No"
+            printf "  %-15s %-10s %-15s %-10s %s\n" "$name" "$group" "$branch" "$auto_str" "$repo_dir"
+        fi
+    done
+}
+
+cmd_status() {
+    shopt -s nullglob
+    local confs=("$CONF_DIR"/*.conf)
+    shopt -u nullglob
+
+    if [[ ${#confs[@]} -eq 0 ]]; then
+        echo -e "${YELLOW}No hay repositorios configurados en $CONF_DIR.${RESET}"
+        return 0
+    fi
+
+    echo -e "${BOLD}================================================================================${RESET}"
+    echo -e "${BOLD}           FORKHUB — Dashboard de Salud de Flota de Repositorios                ${RESET}"
+    echo -e "${BOLD}================================================================================${RESET}"
+    printf " %-13s %-9s %-15s %-25s %s\n" "REPOSITORIO" "GRUPO" "RAMA" "ESTADO" "ÚLTIMO COMMIT"
+    echo -e "--------------------------------------------------------------------------------"
+
+    for c in "${confs[@]}"; do
+        if ! load_config "$c"; then
+            continue
+        fi
+
+        CURRENT_TARGET="$name"
+        local status_badge=""
+        local last_commit=""
+
+        if [[ ! -d "$repo_dir" ]]; then
+            status_badge="${RED}❌ Directorio no existe${RESET}"
+            last_commit="N/A"
+            printf " %-13s %-9s %-15s %-34b %s\n" "$name" "$group" "$branch" "$status_badge" "$last_commit"
+            continue
+        fi
+
+        ensure_safe_directory "$repo_dir"
+
+        if ! git -C "$repo_dir" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+            status_badge="${RED}❌ No es repo Git${RESET}"
+            last_commit="N/A"
+            printf " %-13s %-9s %-15s %-34b %s\n" "$name" "$group" "$branch" "$status_badge" "$last_commit"
+            continue
+        fi
+
+        # Comprobar si hay cambios sucios en el árbol local
+        local dirty=""
+        if ! git -C "$repo_dir" diff --quiet 2>/dev/null || ! git -C "$repo_dir" diff --cached --quiet 2>/dev/null; then
+            dirty=" ${YELLOW}(modificado)${RESET}"
+        fi
+
+        # Obtener último commit local
+        local head_hash
+        head_hash=$(git -C "$repo_dir" rev-parse --short HEAD 2>/dev/null || echo "unknown")
+        last_commit=$(git -C "$repo_dir" log -1 --format="%cd (%s)" --date=relative 2>/dev/null | cut -c1-38 || echo "N/A")
+
+        # Consultar remoto
+        local fetch_err=0
+        git -C "$repo_dir" fetch "$remote" "$branch" --quiet 2>/dev/null || fetch_err=1
+
+        if [[ $fetch_err -ne 0 ]]; then
+            status_badge="${YELLOW}⚠️ Sin conexión/Remoto${RESET}"
+        else
+            local local_rev remote_rev behind ahead
+            local_rev=$(git -C "$repo_dir" rev-parse HEAD 2>/dev/null || echo "")
+            remote_rev=$(git -C "$repo_dir" rev-parse "FETCH_HEAD" 2>/dev/null || echo "")
+
+            if [[ "$local_rev" == "$remote_rev" ]]; then
+                status_badge="${GREEN}🟢 Al día ($head_hash)${RESET}$dirty"
+            else
+                behind=$(git -C "$repo_dir" rev-list --count HEAD..FETCH_HEAD 2>/dev/null || echo 0)
+                ahead=$(git -C "$repo_dir" rev-list --count FETCH_HEAD..HEAD 2>/dev/null || echo 0)
+
+                if [[ $behind -gt 0 && $ahead -eq 0 ]]; then
+                    status_badge="${CYAN}🔄 Pendiente (+$behind)${RESET}$dirty"
+                elif [[ $behind -eq 0 && $ahead -gt 0 ]]; then
+                    status_badge="${MAGENTA}⬆️ Adelantado ($ahead commits)${RESET}$dirty"
+                else
+                    status_badge="${RED}⚠️ Divergente (+${behind}/-${ahead})${RESET}$dirty"
+                fi
+            fi
+        fi
+
+        printf " %-13s %-9s %-15s %-34b %s\n" "$name" "$group" "$branch" "$status_badge" "$last_commit"
+    done
+    echo -e "${BOLD}================================================================================${RESET}"
+}
+
+cmd_update() {
+    local target=""
+    local group_filter=""
+    local dry_run=false
+    local force=false
+
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -n|--dry-run)
+                dry_run=true
+                shift
+                ;;
+            -g|--group)
+                group_filter="$2"
+                shift 2
+                ;;
+            -a|--all)
+                target="--all"
+                shift
+                ;;
+            -f|--force)
+                force=true
+                shift
+                ;;
+            -h|--help)
+                show_help
+                exit 0
+                ;;
+            *)
+                if [[ -z "$target" ]]; then
+                    target="$1"
+                fi
+                shift
+                ;;
+        esac
+    done
+
+    shopt -s nullglob
+    local confs=("$CONF_DIR"/*.conf)
+    shopt -u nullglob
+
+    if [[ ${#confs[@]} -eq 0 ]]; then
+        log "No hay repositorios configurados en $CONF_DIR."
+        return 0
+    fi
+
+    log "Iniciando ciclo de actualización de flota forkhub..."
+    local updated_count=0
+    local up_to_date_count=0
+    local error_count=0
+
+    for c in "${confs[@]}"; do
+        if ! load_config "$c"; then
+            continue
+        fi
+
+        # Filtrar por nombre si se especificó uno
+        if [[ -n "$target" && "$target" != "--all" && "$target" != "$name" ]]; then
+            continue
+        fi
+
+        # Filtrar por grupo si se especificó
+        if [[ -n "$group_filter" && "$group_filter" != "$group" ]]; then
+            continue
+        fi
+
+        # Si es --all y auto_update es falso, omitir a menos que se fuerce
+        if [[ "$target" == "--all" && "$auto_update" == "false" && "$force" == "false" ]]; then
+            continue
+        fi
+
+        CURRENT_TARGET="$name"
+
+        if [[ ! -d "$repo_dir" ]]; then
+            log "ERROR: El directorio $repo_dir no existe."
+            error_count=$((error_count + 1))
+            continue
+        fi
+
+        ensure_safe_directory "$repo_dir"
+
+        if ! git -C "$repo_dir" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+            log "ERROR: $repo_dir no es un repositorio Git válido."
+            error_count=$((error_count + 1))
+            continue
+        fi
+
+        # Fetch silencioso
+        if ! git -C "$repo_dir" fetch "$remote" "$branch" --quiet 2>/dev/null; then
+            log "ADVERTENCIA: No se pudo obtener el remoto '$remote/$branch\. Compruebe conectividad."
+            error_count=$((error_count + 1))
+            continue
+        fi
+
+        local local_rev remote_rev behind
+        local_rev=$(git -C "$repo_dir" rev-parse HEAD 2>/dev/null || echo "")
+        remote_rev=$(git -C "$repo_dir" rev-parse "FETCH_HEAD" 2>/dev/null || echo "")
+
+        if [[ "$local_rev" == "$remote_rev" ]]; then
+            log "[✓] $name: Al día (${local_rev:0:7}). Sin cambios pendientes en $remote/$branch."
+            up_to_date_count=$((up_to_date_count + 1))
+            continue
+        fi
+
+        behind=$(git -C "$repo_dir" rev-list --count HEAD..FETCH_HEAD 2>/dev/null || echo 0)
+
+        if [[ $behind -eq 0 ]]; then
+            log "[✓] $name: El árbol local está adelantado o no hay commits para integrar."
+            up_to_date_count=$((up_to_date_count + 1))
+            continue
+        fi
+
+        if [[ "$dry_run" == "true" ]]; then
+            log "[SIMULACIÓN] $name: Hay $behind commits nuevos disponibles en $remote/$branch (${remote_rev:0:7})."
+            continue
+        fi
+
+        log "Actualizando $name ($behind nuevos commits desde $remote/$branch)..."
+
+        # Intentar fast-forward limpio
+        if git -C "$repo_dir" merge --ff-only FETCH_HEAD --quiet; then
+            local new_hash
+            new_hash=$(git -C "$repo_dir" rev-parse --short HEAD)
+            log "¡ÉXITO! $name actualizado a $new_hash."
+            updated_count=$((updated_count + 1))
+
+            # Ejecutar hook post_update si existe
+            if [[ -n "$post_update" ]]; then
+                log "Ejecutando post_update hook: $post_update"
+                eval "$post_update" 2>&1 | while IFS= read -r line; do
+                    log "  [hook] $line"
+                done || true
+            fi
+
+            notify "🚀 Forkhub: $name actualizado" "$behind nuevos commits aplicados con éxito ($new_hash)"
+        else
+            log "ERROR: Falló el fast-forward en $name. La rama tiene modificaciones locales o divergencia."
+            error_count=$((error_count + 1))
+            notify "⚠️ Forkhub: Error en $name" "No se pudo realizar fast-forward. Revisar divergencias." "critical"
+        fi
+    done
+
+    CURRENT_TARGET="forkhub"
+    log "Ciclo finalizado. Actualizados: $updated_count | Al día: $up_to_date_count | Errores: $error_count"
+}
+
+cmd_add() {
+    local add_name="${1:-}"
+    local add_dir="${2:-}"
+    local add_branch="${3:-}"
+    local add_remote="${4:-origin}"
+    local add_group="${5:-general}"
+
+    if [[ -z "$add_name" || -z "$add_dir" ]]; then
+        echo -e "${RED}Error: Se requieren al menos el nombre y la ruta del repositorio.${RESET}"
+        echo "Uso: forkhub add <nombre> <ruta_dir> [branch] [remote] [group]"
+        return 1
+    fi
+
+    local conf_file="$CONF_DIR/${add_name}.conf"
+    if [[ -f "$conf_file" ]]; then
+        echo -e "${RED}Error: Ya existe una configuración para '${add_name}' en $conf_file.${RESET}"
+        return 1
+    fi
+
+    if [[ ! -d "$add_dir" ]]; then
+        echo -e "${RED}Error: El directorio '$add_dir' no existe.${RESET}"
+        return 1
+    fi
+
+    ensure_safe_directory "$add_dir"
+
+    if ! git -C "$add_dir" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+        echo -e "${RED}Error: '$add_dir' no es un repositorio Git válido.${RESET}"
+        return 1
+    fi
+
+    # Detectar rama actual si no se proveyó
+    if [[ -z "$add_branch" ]]; then
+        add_branch=$(git -C "$add_dir" branch --show-current 2>/dev/null || echo "main")
+    fi
+
+    mkdir -p "$CONF_DIR"
+    cat << _CONF_ > "$conf_file"
+# /etc/forkhub/repos.d/${add_name}.conf
+# Configuración generada por forkhub add el $(date "+%Y-%m-%d %H:%M:%S")
+
+name="${add_name}"
+description="Repositorio ${add_name}"
+repo_dir="${add_dir}"
+remote="${add_remote}"
+branch="${add_branch}"
+group="${add_group}"
+auto_update=true
+post_update="chmod -R g+rwX ${add_dir} 2>/dev/null || true"
+_CONF_
+
+    chmod 664 "$conf_file" 2>/dev/null || true
+    chown root:wheel "$conf_file" 2>/dev/null || true
+
+    echo -e "${GREEN}¡Éxito! Repositorio '${add_name}' registrado en $conf_file.${RESET}"
+    echo "  Grupo:  $add_group"
+    echo "  Rama:   $add_branch"
+    echo "  Remoto: $add_remote"
+    echo "  Ruta:   $add_dir"
+}
+
+cmd_remove() {
+    local rm_name="${1:-}"
+    local force=false
+
+    if [[ "$rm_name" == "-f" || "$rm_name" == "--force" ]]; then
+        force=true
+        rm_name="${2:-}"
+    elif [[ "${2:-}" == "-f" || "${2:-}" == "--force" ]]; then
+        force=true
+    fi
+
+    if [[ -z "$rm_name" ]]; then
+        echo -e "${RED}Error: Especifique el nombre del repositorio a retirar.${RESET}"
+        echo "Uso: forkhub remove <nombre> [-f|--force]"
+        return 1
+    fi
+
+    local conf_file="$CONF_DIR/${rm_name}.conf"
+    if [[ ! -f "$conf_file" ]]; then
+        echo -e "${RED}Error: No existe el archivo de configuración $conf_file.${RESET}"
+        return 1
+    fi
+
+    if [[ "$force" == "false" ]]; then
+        read -rp "¿Está seguro de retirar '${rm_name}' de la flota forkhub? [s/N]: " confirm
+        if [[ ! "$confirm" =~ ^[sS]$ ]]; then
+            echo "Operación cancelada."
+            return 0
+        fi
+    fi
+
+    rm -f "$conf_file"
+    echo -e "${GREEN}Configuración $conf_file eliminada.${RESET}"
+    echo "Nota: El árbol local de archivos no ha sido modificado ni borrado."
+}
+
+# ==============================================================================
+# ENRUTADOR PRINCIPAL
+# ==============================================================================
+case "${1:-}" in
+    status)
+        shift
+        cmd_status "$@"
+        ;;
+    update)
+        shift
+        cmd_update "$@"
+        ;;
+    add)
+        shift
+        cmd_add "$@"
+        ;;
+    remove|rm)
+        shift
+        cmd_remove "$@"
+        ;;
+    list|repos|targets)
+        shift
+        cmd_list "$@"
+        ;;
+    -h|--help|help)
+        show_help
+        ;;
+    *)
+        if [[ -z "${1:-}" ]]; then
+            show_help
+        else
+            echo -e "${RED}Comando no reconocido: $1${RESET}"
+            echo "Ejecute 'forkhub --help' para ver los comandos disponibles."
+            exit 1
+        fi
+        ;;
+esac

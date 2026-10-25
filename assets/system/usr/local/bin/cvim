@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# Wrapper para invocar Neovim usando la configuración aislada 'cvim' (Craftzdog)
+# Utiliza NVIM_APPNAME para separar configuración (~/.config/cvim), plugins, caché y estado.
+NVIM_APPNAME="cvim" exec nvim "$@"

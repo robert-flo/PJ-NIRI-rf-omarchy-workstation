@@ -1,0 +1,10 @@
+[Unit]
+Description=Forkhub - Temporizador Diario de Actualización de Flota
+
+[Timer]
+OnCalendar=*-*-* 04:30:00
+Persistent=true
+RandomizedDelaySec=1800
+
+[Install]
+WantedBy=timers.target
