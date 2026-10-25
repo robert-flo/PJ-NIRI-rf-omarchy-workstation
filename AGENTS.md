@@ -52,6 +52,8 @@ Este repositorio (`PJ-NIRI-rf-omarchy-workstation`) persigue una visión fundame
   - `nyxuri`: Producción de escritorio Wayland bajo Noctalia Shell / Nyxuri Engine (Edge T3 M4).
   - `nyxuri-test`: Entorno de pruebas y testbench para Nyxuri Edge (desechable).
   - `nyxuri-legacy`: Entorno de escritorio bajo Nyxuri Stable (tag `v3.1.0` de upstream).
+  - `guest`: Entorno amnésico volátil montado en RAM (`tmpfs` 8GB, destrucción inmediata al logout).
+  - `sandbox`: Entorno amnésico desechable de alto rendimiento sobre Btrfs CoW (aceleración GPU nativa, rollback automático en 3 capas al arranque, login y logout).
 - Configuración de usuario de `niri`/`niri-test`: `robert-flo/niri-dotfiles` con dotbare.
 - Configuración de usuario de `nyxuri`/`nyxuri-test`: `robert-flo/PJ-NIRI-fo-nyxuri` (Edge).
 - Configuración de usuario de `nyxuri-legacy`: `ech678/Nyxuri` tag `v3.1.0` (Estable).
