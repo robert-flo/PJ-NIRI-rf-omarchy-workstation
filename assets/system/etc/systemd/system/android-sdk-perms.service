@@ -1,0 +1,12 @@
+[Unit]
+Description=Monitors /opt/android-sdk and fixes permissions in real time
+After=local-fs.target
+[Service]
+
+Type=simple
+ExecStart=/usr/local/bin/android-sdk-perms_watcher.sh
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

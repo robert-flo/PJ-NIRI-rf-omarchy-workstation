@@ -1,0 +1,62 @@
+#!/usr/bin/env bash
+#
+# shared_dir creates one or more group-shared directories on Arch Linux.
+#
+# Usage:
+#   sudo ./shared_dir
+#   sudo ./shared_dir /z
+#   sudo ./shared_dir /z /team-share /projects
+#   ./shared_dir --help
+
+set -Eeuo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/helper/common.sh"
+source "$SCRIPT_DIR/scripts/configure_shared_directory.sh"
+
+main() {
+  local -a directories=()
+  local directory
+
+  while [[ $# -gt 0 ]]; do
+    case $1 in
+      -h|--help|-help)
+        usage
+        exit 0
+        ;;
+      --)
+        shift
+        directories+=("$@")
+        break
+        ;;
+      -*)
+        error "Invalid option: $1"
+        usage >&2
+        exit 1
+        ;;
+      *)
+        directories+=("$1")
+        ;;
+    esac
+    shift
+  done
+
+  if [[ ${#directories[@]} -eq 0 ]]; then
+    directories=("$DEFAULT_DIR")
+  fi
+
+  for directory in "${directories[@]}"; do
+    normalize_shared_directory "$directory" >/dev/null
+  done
+
+  trap report_failure EXIT
+  require_root
+  require_share_group
+  ensure_dependencies
+
+  for directory in "${directories[@]}"; do
+    configure_shared_directory "$(normalize_shared_directory "$directory")"
+  done
+}
+
+main "$@"
