@@ -59,8 +59,13 @@ fi
 TRIES_STATE="🟢 Al día"
 if pgrep -f "(bash .*/sync-tries( |$)|rclone (sync|copy) .*/tries)" >/dev/null 2>&1; then
     TRIES_STATE="🔄 Syncing"
-elif tail -n 10 "${STATE_DIR}/sync-tries.log" 2>/dev/null | grep -q "SEGURIDAD: ALERTA"; then
-    TRIES_STATE="🛡️ Alerta"
+elif [[ -f "${STATE_DIR}/sync-tries.log" ]]; then
+    last_event=$(tail -n 15 "${STATE_DIR}/sync-tries.log" 2>/dev/null | grep -E "SEGURIDAD: ALERTA|finalizada exitosamente|finalizada con|completada exitosamente|ERROR" | tail -n 1 || true)
+    if echo "$last_event" | grep -q "SEGURIDAD: ALERTA"; then
+        TRIES_STATE="🛡️ Alerta"
+    elif echo "$last_event" | grep -qiE "finalizada con [1-9]|ERROR"; then
+        TRIES_STATE="🔴 Error"
+    fi
 fi
 
 # 2. Datos de Idalia
@@ -75,8 +80,13 @@ fi
 IDALIA_STATE="🟢 Al día"
 if pgrep -f "(bash .*/sync-idalia( |$)|rclone sync .*/idalia)" >/dev/null 2>&1; then
     IDALIA_STATE="🔄 Syncing"
-elif tail -n 10 "${STATE_DIR}/sync-idalia.log" 2>/dev/null | grep -q "SEGURIDAD: ALERTA"; then
-    IDALIA_STATE="🛡️ Alerta"
+elif [[ -f "${STATE_DIR}/sync-idalia.log" ]]; then
+    last_event=$(tail -n 15 "${STATE_DIR}/sync-idalia.log" 2>/dev/null | grep -E "SEGURIDAD: ALERTA|completada exitosamente|ERROR" | tail -n 1 || true)
+    if echo "$last_event" | grep -q "SEGURIDAD: ALERTA"; then
+        IDALIA_STATE="🛡️ Alerta"
+    elif echo "$last_event" | grep -qiE "ERROR"; then
+        IDALIA_STATE="🔴 Error"
+    fi
 fi
 IDALIA_TOPOLOGY="Google Drive [ROL: ${IDALIA_ROLE^^}]"
 
@@ -92,8 +102,13 @@ fi
 UPLOADS_STATE="🟢 Al día"
 if pgrep -f "(bash .*/sync-uploads-gracie( |$)|rclone sync .*/uploads-gracie)" >/dev/null 2>&1; then
     UPLOADS_STATE="🔄 Syncing"
-elif tail -n 10 "${STATE_DIR}/sync-uploads-gracie.log" 2>/dev/null | grep -q "SEGURIDAD: ALERTA"; then
-    UPLOADS_STATE="🛡️ Alerta"
+elif [[ -f "${STATE_DIR}/sync-uploads-gracie.log" ]]; then
+    last_event=$(tail -n 15 "${STATE_DIR}/sync-uploads-gracie.log" 2>/dev/null | grep -E "SEGURIDAD: ALERTA|sincronizado exitosamente|descargado exitosamente|ERROR" | tail -n 1 || true)
+    if echo "$last_event" | grep -q "SEGURIDAD: ALERTA"; then
+        UPLOADS_STATE="🛡️ Alerta"
+    elif echo "$last_event" | grep -qiE "ERROR"; then
+        UPLOADS_STATE="🔴 Error"
+    fi
 fi
 UPLOADS_TOPOLOGY="Google Drive [ROL: ${UPLOADS_ROLE^^}]"
 

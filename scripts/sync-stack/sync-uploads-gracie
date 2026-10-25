@@ -109,6 +109,22 @@ RCLONE_FLAGS=(
 [[ "$DRY_RUN" == true ]] && RCLONE_FLAGS+=(--dry-run)
 
 if [[ "$ROLE" == "master" ]]; then
+    TOTAL_LOCAL_FILES=$(find "$LOCAL_DIR" -type f 2>/dev/null | wc -l)
+    if [[ $TOTAL_LOCAL_FILES -eq 0 && "$FORCE_DELETE" == false ]]; then
+        log "SEGURIDAD: ALERTA: $LOCAL_DIR está vacío. Para evitar borrar la nube, se detiene la sincronización MAESTRO."
+        log "SEGURIDAD: Si deseas descargar desde la nube primero, ejecuta: sync-uploads-gracie --replica"
+        echo ""
+        echo "=================================================================="
+        echo "  🛡️  ESCUDO DE SEGURIDAD: CARPETA LOCAL VACÍA DETECTADA"
+        echo "=================================================================="
+        echo "Tu carpeta local '$LOCAL_DIR' no contiene archivos."
+        echo "Para descargar tus archivos desde Google Drive primero, ejecuta:"
+        echo "  sync-uploads-gracie --replica"
+        echo "=================================================================="
+        notify "sync-uploads-gracie" "Escudo activado: carpeta local vacía" "critical"
+        exit 2
+    fi
+
     log "Modo MAESTRO: Sincronizando $LOCAL_DIR ➔ $CLOUD_DEST"
     if rclone sync "$LOCAL_DIR" "$CLOUD_DEST" "${RCLONE_FLAGS[@]}"; then
         log "Uploads-Gracie sincronizado exitosamente hacia Google Drive."
