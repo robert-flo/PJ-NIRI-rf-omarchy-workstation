@@ -1,0 +1,12 @@
+[Unit]
+Description=Synchub - Temporizador Programado para %i
+Documentation=https://github.com/robert-flo/PJ-NIRI-rf-omarchy-workstation
+After=z-drive-perms.service
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=30min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

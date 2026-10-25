@@ -1,0 +1,3 @@
+# Regla Udev para detección del disco externo ALMACEN_BTRFS
+# Notifica a systemd para asociar el montaje con synchub-btrfs-attach.service
+ACTION=="add|change", SUBSYSTEM=="block", ENV{ID_FS_LABEL}=="ALMACEN_BTRFS", TAG+="systemd"

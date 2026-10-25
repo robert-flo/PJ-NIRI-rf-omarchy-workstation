@@ -1,0 +1,13 @@
+[Unit]
+Description=Synchub - Auto-sincronización y Snapshot CoW al montar ALMACEN_BTRFS
+Documentation=https://github.com/robert-flo/PJ-NIRI-rf-omarchy-workstation
+BindsTo=run-media-omarchy-ALMACEN_BTRFS.mount
+After=run-media-omarchy-ALMACEN_BTRFS.mount z-drive-perms.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/synchub sync tries --local-only
+TimeoutStartSec=300
+
+[Install]
+WantedBy=run-media-omarchy-ALMACEN_BTRFS.mount

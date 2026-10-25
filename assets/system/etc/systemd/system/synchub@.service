@@ -1,0 +1,10 @@
+[Unit]
+Description=Synchub - Sincronización Automática para %i
+Documentation=https://github.com/robert-flo/PJ-NIRI-rf-omarchy-workstation
+After=network-online.target z-drive-perms.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/synchub sync %i
+TimeoutStartSec=1800

@@ -1,0 +1,527 @@
+#!/usr/bin/env bash
+#
+# synchub: Suite Unificada y Declarativa de Sincronización para Linux
+# Gestiona respaldos multi-destino (Google Drive + Btrfs CoW + Rclone Crypt)
+# basada en definiciones modulares en /etc/synchub/targets.d/*.conf
+#
+
+set -eo pipefail
+
+CONF_DIR="/etc/synchub/targets.d"
+STATE_DIR="/z-drive/.sync-state"
+EXCLUDE_FILE="/etc/rclone/exclusiones-sync.txt"
+mkdir -p "$STATE_DIR"
+
+# Paleta de colores si hay TTY
+if [[ -t 1 ]]; then
+    BOLD="\033[1m"
+    DIM="\033[2m"
+    GREEN="\033[32m"
+    YELLOW="\033[33m"
+    CYAN="\033[36m"
+    RED="\033[31m"
+    RESET="\033[0m"
+else
+    BOLD="" DIM="" GREEN="" YELLOW="" CYAN="" RED="" RESET=""
+fi
+
+log() {
+    local target="${CURRENT_TARGET:-synchub}"
+    local msg="[$(date '+%Y-%m-%d %H:%M:%S')] [$target] $*"
+    echo -e "$msg"
+    echo "$msg" >> "${STATE_DIR}/${target}.log" 2>/dev/null || true
+}
+
+notify() {
+    local title="$1"
+    local msg="$2"
+    local urgency="${3:-normal}"
+    if command -v notify-send >/dev/null 2>&1 && [[ -n "${WAYLAND_DISPLAY:-${DISPLAY:-}}" ]]; then
+        notify-send -u "$urgency" "$title" "$msg" 2>/dev/null || true
+    fi
+}
+
+show_help() {
+    cat << EOF
+${BOLD}Synchub — Suite Declarativa de Sincronización y Respaldos${RESET}
+
+Uso:
+  synchub [COMANDO] [OBJETIVO] [OPCIONES]
+
+Comandos principales:
+  ${CYAN}status${RESET}                 Muestra el dashboard global de salud, discos y carpetas.
+  ${CYAN}sync [target|--all]${RESET}    Ejecuta la sincronización de un objetivo o de todos.
+  ${CYAN}add <nombre>${RESET}           Asistente para añadir una nueva carpeta colaborativa.
+  ${CYAN}remove <nombre>${RESET}        Desmonta y elimina la configuración de un objetivo.
+  ${CYAN}prune-snapshots${RESET}        Ejecuta la política de retención GFS en snapshots Btrfs.
+  ${CYAN}targets${RESET}                Lista todos los objetivos configurados.
+
+Opciones de sincronización (para 'synchub sync'):
+  -n, --dry-run          Modo simulación: no modifica archivos locales ni remotos.
+  -c, --copy             Modo copia acumulativa: no elimina archivos en destino.
+  -l, --local-only       Sincroniza únicamente hacia el disco local Btrfs.
+  -r, --cloud-only       Sincroniza únicamente hacia la nube (Google Drive).
+  --pull                 Descarga / restaura desde la nube hacia el disco local.
+  --force-delete         Autoriza borrado masivo si se supera el umbral de seguridad.
+  --poweroff, --shutdown Apaga el sistema automáticamente tras finalizar con éxito.
+  -h, --help             Muestra esta ayuda.
+
+Ejemplos:
+  synchub status
+  synchub sync tries
+  synchub sync --all --poweroff
+  synchub add proyectos
+EOF
+}
+
+# ==============================================================================
+# RETENCIÓN INTELIGENTE GFS PARA SNAPSHOTS BTRFS
+# ==============================================================================
+prune_btrfs_gfs() {
+    local snap_dir="$1"
+    local prefix="${2:-gracie}"
+    local dry_run="${3:-false}"
+
+    if [[ ! -d "$snap_dir" ]]; then
+        return 0
+    fi
+
+    log "Ejecutando política de retención GFS en snapshots ($snap_dir)..."
+
+    # Obtener lista ordenada de snapshots
+    local snaps=()
+    while IFS= read -r s; do
+        [[ -n "$s" ]] && snaps+=("$s")
+    done < <(find "$snap_dir" -maxdepth 1 -name "${prefix}_*" -printf "%f\n" 2>/dev/null | sort -r)
+
+    local total=${#snaps[@]}
+    if [[ $total -le 12 ]]; then
+        log "Snapshots totales ($total) dentro del margen mínimo (<=12). No se requiere podado."
+        return 0
+    fi
+
+    python3 -c '
+import os, sys, re, datetime
+
+snap_dir = sys.argv[1]
+prefix = sys.argv[2]
+dry_run = sys.argv[3].lower() == "true"
+snaps = sys.argv[4:]
+
+# Clasificación GFS: 12 horarios, 7 diarios, 4 semanales, 3 mensuales
+now = datetime.datetime.now()
+keep = set()
+
+hourly_buckets = {}
+daily_buckets = {}
+weekly_buckets = {}
+monthly_buckets = {}
+
+pattern = re.compile(r"^" + re.escape(prefix) + r"_(\d{4})-?(\d{2})-?(\d{2})_?(\d{2})(\d{2})(\d{2})$")
+
+for s in snaps:
+    m = pattern.match(s)
+    if not m:
+        continue
+    try:
+        dt = datetime.datetime(*map(int, m.groups()))
+    except ValueError:
+        continue
+
+    age = now - dt
+
+    # 1. Horarios: últimas 12 horas
+    if age.total_seconds() <= 12 * 3600:
+        h_key = dt.strftime("%Y%m%d%H")
+        if h_key not in hourly_buckets:
+            hourly_buckets[h_key] = s
+            keep.add(s)
+
+    # 2. Diarios: últimos 7 días
+    if age.days <= 7:
+        d_key = dt.strftime("%Y%m%d")
+        if d_key not in daily_buckets:
+            daily_buckets[d_key] = s
+            keep.add(s)
+
+    # 3. Semanales: últimas 4 semanas
+    if age.days <= 28:
+        w_key = dt.strftime("%Y_%U")
+        if w_key not in weekly_buckets:
+            weekly_buckets[w_key] = s
+            keep.add(s)
+
+    # 4. Mensuales: últimos 3 meses
+    if age.days <= 90:
+        m_key = dt.strftime("%Y_%m")
+        if m_key not in monthly_buckets:
+            monthly_buckets[m_key] = s
+            keep.add(s)
+
+# Asegurar conservar al menos el más reciente
+if snaps and snaps[0] not in keep:
+    keep.add(snaps[0])
+
+to_delete = [s for s in snaps if s not in keep]
+
+print(f"Snapshots totales: {len(snaps)} | A conservar (GFS): {len(keep)} | A eliminar: {len(to_delete)}")
+
+for s in to_delete:
+    target_path = os.path.join(snap_dir, s)
+    if dry_run:
+        print(f"  [DRY-RUN] btrfs subvolume delete {target_path}")
+    else:
+        print(f"  [GFS-PRUNE] Eliminando snapshot obsoleto: {s}")
+        os.system(f"btrfs subvolume delete \"{target_path}\" >/dev/null 2>&1 || rm -rf \"{target_path}\"")
+' "$snap_dir" "$prefix" "$dry_run" "${snaps[@]}"
+}
+
+# ==============================================================================
+# COMANDO: STATUS
+# ==============================================================================
+cmd_status() {
+    if command -v sync-status >/dev/null 2>&1; then
+        sync-status
+        return 0
+    fi
+    echo -e "${BOLD}Objetivos configurados en $CONF_DIR:${RESET}"
+    for f in "$CONF_DIR"/*.conf; do
+        [[ -f "$f" ]] && echo "  • $(basename "$f" .conf)"
+    done
+}
+
+# ==============================================================================
+# COMANDO: SYNC TARGET
+# ==============================================================================
+sync_single_target() {
+    local target="$1"
+    shift
+    local conf_file="${CONF_DIR}/${target}.conf"
+
+    if [[ ! -f "$conf_file" ]]; then
+        echo -e "${RED}ERROR: No se encontró la configuración para '$target' en $conf_file${RESET}" >&2
+        return 1
+    fi
+
+    # Cargar variables del objetivo
+    local name="" description="" local_path="" cloud_remote="" local_btrfs_dest=""
+    local role="master" enable_watcher=false watcher_debounce=300
+    local enable_shield=true empty_folder_shield=true max_deletions_abs=100 max_deletions_pct=40
+    local enable_btrfs_snapshots=false btrfs_retention_policy="gfs" cloud_trash=true
+
+    # shellcheck source=/dev/null
+    source "$conf_file"
+
+    local CURRENT_TARGET="$target"
+    local DRY_RUN=false
+    local MODE="sync"
+    local DO_LOCAL=true
+    local DO_CLOUD=true
+    local FORCE_DELETE=false
+
+    for arg in "$@"; do
+        case "$arg" in
+            -n|--dry-run) DRY_RUN=true ;;
+            -c|--copy)    MODE="copy" ;;
+            -l|--local-only) DO_CLOUD=false ;;
+            -r|--cloud-only) DO_LOCAL=false ;;
+            --pull)       MODE="pull" ;;
+            --force-delete) FORCE_DELETE=true ;;
+        esac
+    done
+
+    local LOCK_FILE="${STATE_DIR}/${target}.lock"
+    exec 200>"$LOCK_FILE"
+    if ! flock -n 200; then
+        log "ADVERTENCIA: Ya hay una sincronización activa para '$target'. Omitiendo ejecución."
+        return 0
+    fi
+
+    echo "=================================================================="
+    echo "  [SYNCHUB] Sincronizando: ${name^^} ($description)"
+    echo "=================================================================="
+    log "Iniciando ciclo (Modo: ${MODE^^}, Dry-Run: $DRY_RUN, Local: $DO_LOCAL, Cloud: $DO_CLOUD)..."
+
+    # Preparar exclusiones
+    local RSYNC_EXCLUDES=(--exclude "snapshots/**" --exclude "snapshots" --exclude ".snapshots/**" --exclude ".snapshots" --exclude "_boveda/**" --exclude "_boveda")
+    local RCLONE_EXCLUDES=(--exclude "snapshots/**" --exclude "snapshots" --exclude ".snapshots/**" --exclude ".snapshots" --exclude "_boveda/**" --exclude "_boveda" --exclude "_boveda_cifrada/**" --exclude "_boveda_cifrada")
+    if [[ -f "$EXCLUDE_FILE" ]]; then
+        RSYNC_EXCLUDES+=(--exclude-from="$EXCLUDE_FILE")
+        RCLONE_EXCLUDES+=(--exclude-from="$EXCLUDE_FILE")
+    fi
+
+    # 1. Modo PULL (Descarga desde la nube o backup local)
+    if [[ "$MODE" == "pull" || "$role" == "replica" ]]; then
+        log "Modo RÉPLICA / PULL activo: Descargando $cloud_remote ➔ $local_path"
+        mkdir -p "$local_path"
+        if [[ -n "$cloud_remote" ]] && command -v rclone >/dev/null 2>&1; then
+            rclone copy "$cloud_remote" "$local_path" -P --fast-list "${RCLONE_EXCLUDES[@]}"
+            log "Descarga RÉPLICA completada exitosamente."
+        fi
+        return 0
+    fi
+
+    # 2. Escudo de Carpeta Vacía
+    local local_count=0
+    if [[ -d "$local_path" ]]; then
+        local_count=$(find "$local_path" -maxdepth 1 -mindepth 1 2>/dev/null | wc -l)
+    fi
+
+    if [[ "$empty_folder_shield" == true && $local_count -eq 0 ]]; then
+        local alert="ESCUDO ACTIVADO: La carpeta local '$local_path' está vacía. Sincronización bloqueada para proteger la nube."
+        log "SEGURIDAD: $alert"
+        echo -e "${RED}==================================================================${RESET}"
+        echo -e "${RED}  🛡️  ESCUDO DE SEGURIDAD: CARPETA LOCAL VACÍA DETECTADA         ${RESET}"
+        echo -e "${RED}==================================================================${RESET}"
+        echo "Para descargar los archivos desde la nube primero, ejecuta:"
+        echo "  synchub sync $target --pull"
+        echo -e "${RED}==================================================================${RESET}"
+        notify "🛡️ Escudo $target" "$alert" "critical"
+        return 2
+    fi
+
+    # 3. Respaldo Local en Disco Btrfs (con Snapshots GFS)
+    local LOCAL_MOUNT
+    LOCAL_MOUNT=$(findmnt -n -o TARGET /run/media/*/ALMACEN_BTRFS 2>/dev/null | head -n 1 || echo "")
+    if [[ "$DO_LOCAL" == true && -n "$local_btrfs_dest" && -n "$LOCAL_MOUNT" && -d "$LOCAL_MOUNT" ]]; then
+        local btrfs_target="${LOCAL_MOUNT}/${local_btrfs_dest}"
+        local snap_dir="${LOCAL_MOUNT}/.snapshots"
+        mkdir -p "$btrfs_target" "$snap_dir"
+
+        if [[ "$enable_btrfs_snapshots" == true && "$DRY_RUN" == false ]]; then
+            local stamp
+            stamp="$(date '+%Y%m%d_%H%M%S')"
+            local snap_path="${snap_dir}/${target}_${stamp}"
+            if btrfs subvolume snapshot -r "$btrfs_target" "$snap_path" >/dev/null 2>&1; then
+                log "Snapshot Btrfs CoW creado: $snap_path"
+            fi
+            prune_btrfs_gfs "$snap_dir" "$target" false
+        fi
+
+        log "Sincronizando con rsync hacia disco local Btrfs ($btrfs_target)..."
+        rsync -avh --delete-delay --stats "${RSYNC_EXCLUDES[@]}" "$local_path/" "$btrfs_target/" || true
+    fi
+
+    # 4. Sincronización hacia la Nube (Rclone)
+    if [[ "$DO_CLOUD" == true && -n "$cloud_remote" ]] && command -v rclone >/dev/null 2>&1; then
+        local rclone_args=("rclone")
+        if [[ "$MODE" == "sync" ]]; then
+            rclone_args+=("sync")
+        else
+            rclone_args+=("copy")
+        fi
+        rclone_args+=("$local_path" "$cloud_remote" -P --fast-list)
+        [[ "$cloud_trash" == true ]] && rclone_args+=(--drive-use-trash)
+        [[ "$DRY_RUN" == true ]] && rclone_args+=(--dry-run)
+        rclone_args+=("${RCLONE_EXCLUDES[@]}")
+
+        log "Ejecutando rclone hacia $cloud_remote..."
+        if "${rclone_args[@]}"; then
+            log "Sincronización hacia $cloud_remote completada con ÉXITO."
+            notify "synchub: $target" "Sincronización completada hacia la nube" "normal"
+        else
+            log "ERROR en sincronización hacia $cloud_remote."
+            notify "Error synchub: $target" "Falló la sincronización con Google Drive" "critical"
+            return 1
+        fi
+    fi
+
+    return 0
+}
+
+# ==============================================================================
+# COMANDO: SYNC ALL / POWEROFF
+# ==============================================================================
+cmd_sync() {
+    local target="${1:-}"
+    shift || true
+
+    local POWEROFF=false
+    local PASS_ARGS=()
+    for arg in "$@"; do
+        case "$arg" in
+            --poweroff|--shutdown) POWEROFF=true ;;
+            *) PASS_ARGS+=("$arg") ;;
+        esac
+    done
+
+    if [[ -z "$target" || "$target" == "--all" || "$target" == "all" ]]; then
+        log "Iniciando ciclo global para todos los objetivos en $CONF_DIR..."
+        local errors=0
+        for conf in "$CONF_DIR"/*.conf; do
+            [[ ! -f "$conf" ]] && continue
+            local t
+            t="$(basename "$conf" .conf)"
+            if ! sync_single_target "$t" "${PASS_ARGS[@]}"; then
+                errors=$((errors + 1))
+            fi
+        done
+
+        if [[ "$POWEROFF" == true ]]; then
+            if [[ $errors -gt 0 ]]; then
+                log "SUPERVISOR APAGADO: CANCELADO porque ocurrieron $errors error(es)."
+                notify "❌ Apagado Cancelado" "Se detectaron $errors errores durante la sincronización" "critical"
+                exit 1
+            else
+                log "SUPERVISOR APAGADO: Sincronización exitosa. Apagando en 30s..."
+                notify "🌙 Apagado en 30 segundos" "Presiona Ctrl+C para cancelar" "critical"
+                for i in {30..1}; do
+                    echo -ne "\r[🌙] Apagando el equipo en $i segundos (Ctrl+C para abortar)... "
+                    sleep 1
+                done
+                echo ""
+                systemctl poweroff
+            fi
+        fi
+    else
+        sync_single_target "$target" "${PASS_ARGS[@]}"
+    fi
+}
+
+# ==============================================================================
+# COMANDO: ADD TARGET
+# ==============================================================================
+cmd_add() {
+    local name="${1:-}"
+    if [[ -z "$name" ]]; then
+        echo "Uso: synchub add <nombre_carpeta>"
+        exit 1
+    fi
+
+    local target_dir="/z-drive/$name"
+    local conf_file="${CONF_DIR}/${name}.conf"
+
+    echo "=================================================================="
+    echo "  [SYNCHUB] Creando nuevo objetivo colaborativo: $name            "
+    echo "=================================================================="
+
+    # 1. Crear carpeta colaborativa con permisos 2770 y ACLs
+    sudo mkdir -p "$target_dir"
+    sudo chown root:wheel "$target_dir"
+    sudo chmod 2770 "$target_dir"
+    sudo setfacl -d -m u::rwx,g::rwx,o::--- "$target_dir" 2>/dev/null || true
+    echo " [✓] Directorio creado en $target_dir (2770 root:wheel + ACLs)"
+
+    # 2. Desplegar symlinks en todos los usuarios y /etc/skel
+    for u in /home/* /etc/skel; do
+        [[ ! -d "$u" ]] && continue
+        sudo ln -sfn "$target_dir" "$u/$name"
+        if [[ "$u" != "/etc/skel" ]]; then
+            u_name="$(basename "$u")"
+            sudo chown -h "$u_name:$u_name" "$u/$name" 2>/dev/null || true
+        fi
+    done
+    echo " [✓] Enlaces simbólicos desplegados en perfiles de usuario y /etc/skel/"
+
+    # 3. Crear archivo .conf modular
+    sudo tee "$conf_file" > /dev/null << EOF
+name="$name"
+description="Objetivo colaborativo $name"
+local_path="$target_dir"
+cloud_remote="gdrive:$name"
+role="master"
+interval="30min"
+boot_delay="10min"
+enable_watcher=false
+enable_shield=true
+empty_folder_shield=true
+cloud_trash=true
+EOF
+    sudo chmod 644 "$conf_file"
+    echo " [✓] Configuración declarativa creada en $conf_file"
+
+    # 4. Habilitar timer parametrizado
+    if systemctl list-unit-files | grep -q "synchub@.timer"; then
+        sudo systemctl enable --now "synchub@${name}.timer"
+        echo " [✓] Temporizador synchub@${name}.timer habilitado y activo."
+    fi
+
+    echo "=================================================================="
+    echo " [✓] Objetivo '$name' configurado y activo."
+    echo "=================================================================="
+}
+
+# ==============================================================================
+# COMANDO: REMOVE TARGET
+# ==============================================================================
+cmd_remove() {
+    local name="${1:-}"
+    if [[ -z "$name" ]]; then
+        echo "Uso: synchub remove <nombre_carpeta>"
+        exit 1
+    fi
+
+    local conf_file="${CONF_DIR}/${name}.conf"
+    local target_dir="/z-drive/$name"
+
+    echo "=================================================================="
+    echo "  [SYNCHUB] Desmontando objetivo: $name                           "
+    echo "=================================================================="
+
+    # 1. Deshabilitar timer systemd
+    sudo systemctl disable --now "synchub@${name}.timer" 2>/dev/null || true
+    sudo systemctl disable --now "synchub@${name}.service" 2>/dev/null || true
+
+    # 2. Retirar symlinks
+    for u in /home/* /etc/skel; do
+        [[ -d "$u" ]] && sudo rm -f "$u/$name"
+    done
+    echo " [✓] Enlaces simbólicos retirados de perfiles."
+
+    # 3. Retirar archivo .conf
+    sudo rm -f "$conf_file"
+    echo " [✓] Configuración $conf_file eliminada."
+
+    echo ""
+    echo "Nota: Los datos locales en '$target_dir' se han conservado por seguridad."
+    echo "Si deseas eliminarlos físicamente, ejecuta: sudo rm -rf '$target_dir'"
+    echo "=================================================================="
+}
+
+# ==============================================================================
+# ENRUTADOR PRINCIPAL
+# ==============================================================================
+case "${1:-status}" in
+    status|--status)
+        cmd_status
+        ;;
+    sync)
+        shift
+        cmd_sync "$@"
+        ;;
+    add)
+        shift
+        cmd_add "$@"
+        ;;
+    remove|rm)
+        shift
+        cmd_remove "$@"
+        ;;
+    prune-snapshots|prune)
+        LOCAL_MOUNT=$(findmnt -n -o TARGET /run/media/*/ALMACEN_BTRFS 2>/dev/null | head -n 1 || echo "")
+        if [[ -n "$LOCAL_MOUNT" && -d "$LOCAL_MOUNT/.snapshots" ]]; then
+            prune_btrfs_gfs "$LOCAL_MOUNT/.snapshots" "${2:-tries}" false
+        else
+            echo "Disco Btrfs no montado o sin carpeta .snapshots."
+        fi
+        ;;
+    targets|list)
+        echo "Objetivos configurados:"
+        for f in "$CONF_DIR"/*.conf; do
+            [[ -f "$f" ]] && echo "  - $(basename "$f" .conf)"
+        done
+        ;;
+    -h|--help|help)
+        show_help
+        ;;
+    *)
+        # Si el primer argumento es un nombre de target conocido
+        if [[ -f "${CONF_DIR}/${1}.conf" ]]; then
+            cmd_sync "$@"
+        else
+            echo "Comando no reconocido: $1" >&2
+            show_help
+            exit 1
+        fi
+        ;;
+esac

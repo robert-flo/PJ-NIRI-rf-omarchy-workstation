@@ -46,6 +46,11 @@ Copias **exactas** de los archivos fuera de `$HOME` que gestiona esta arquitectu
 | `assets/system/usr/local/bin/` (`sync-*`, `upload-moved-*`, `watch-moved`) | `/usr/local/bin/` | `0755` | [[02.3 - Espacio Colaborativo z-drive y Sincronizacion Cloud\|02.3]] |
 | `assets/system/etc/fuse.conf` | `/etc/fuse.conf` | `0644` | [[02.3 - Espacio Colaborativo z-drive y Sincronizacion Cloud\|02.3]] |
 | `assets/system/etc/systemd/system/rclone-gdrive-mount.service` | `/etc/systemd/system/` | `0644` | [[02.3 - Espacio Colaborativo z-drive y Sincronizacion Cloud\|02.3]] |
+| `assets/system/usr/local/bin/synchub` | `/usr/local/bin/` | `0755` | [[02.4 - Suite Declarativa synchub y Automatizacion Udev\|02.4]] |
+| `assets/system/etc/synchub/targets.d/` (`*.conf`) | `/etc/synchub/targets.d/` | `0644` | [[02.4 - Suite Declarativa synchub y Automatizacion Udev\|02.4]] |
+| `assets/system/etc/systemd/system/synchub@.*` | `/etc/systemd/system/` | `0644` | [[02.4 - Suite Declarativa synchub y Automatizacion Udev\|02.4]] |
+| `assets/system/etc/systemd/system/synchub-btrfs-attach.service` | `/etc/systemd/system/` | `0644` | [[02.4 - Suite Declarativa synchub y Automatizacion Udev\|02.4]] |
+| `assets/system/etc/udev/rules.d/99-almacen-btrfs.rules` | `/etc/udev/rules.d/` | `0644` | [[02.4 - Suite Declarativa synchub y Automatizacion Udev\|02.4]] |
 | `assets/system/etc/systemd/system/` (`sync-*.service`, `sync-*.timer`) | `/etc/systemd/system/` | `0644` | [[02.3 - Espacio Colaborativo z-drive y Sincronizacion Cloud\|02.3]] |
 
 > [!WARNING]
