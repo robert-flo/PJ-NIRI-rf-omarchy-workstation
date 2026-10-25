@@ -12,3 +12,5 @@ Desktop.ini
 /quickshell/
 /key-cli/
 __pycache__/
+.trash/
+
