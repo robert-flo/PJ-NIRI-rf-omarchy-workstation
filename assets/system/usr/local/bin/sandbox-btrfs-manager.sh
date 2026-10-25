@@ -2,7 +2,7 @@
 #
 # sandbox-btrfs-manager.sh: Gestor de Sesión Amnésica Desechable con Btrfs CoW
 # Restaura instantáneamente /home/sandbox desde la plantilla /home/.sandbox-golden
-# al cerrar sesión o por comando administrativo, con velocidad nativa de NVMe.
+# al arrancar el sistema, al iniciar sesión, al cerrar sesión o por comando manual.
 #
 
 set -eo pipefail
@@ -28,18 +28,17 @@ ensure_golden() {
 }
 
 do_rollback() {
-    log "Ejecutando rollback instantáneo CoW para 'sandbox'..."
+    log "Ejecutando rollback instantáneo CoW para '$TARGET_USER'..."
     ensure_golden
 
-    # 1. Terminar procesos residuales
+    # 1. Terminar de forma contundente cualquier proceso residual del usuario
     if id "$TARGET_USER" &>/dev/null; then
         local user_uid
         user_uid=$(id -u "$TARGET_USER")
         pkill -u "$TARGET_USER" -9 2>/dev/null || true
-        systemctl stop "user@${user_uid}.service" 2>/dev/null || true
     fi
 
-    sleep 0.5
+    sleep 0.3
 
     # 2. Eliminar subvolumen modificado si existe
     if [[ -d "$TARGET_HOME" ]]; then
@@ -55,7 +54,7 @@ do_rollback() {
     log "Creando nuevo snapshot limpio en $TARGET_HOME..."
     btrfs subvolume snapshot "$GOLDEN_SUBVOL" "$TARGET_HOME" >/dev/null
 
-    # 4. Asegurar permisos estrictos
+    # 4. Asegurar propiedad y permisos estrictos
     chown -R "${TARGET_USER}:${TARGET_USER}" "$TARGET_HOME"
     chmod 700 "$TARGET_HOME"
 
@@ -70,18 +69,14 @@ if [[ -n "${PAM_USER:-}" ]]; then
 
     case "${PAM_TYPE:-}" in
         open_session)
-            # Si no existe el home, inicializarlo
-            if [[ ! -d "$TARGET_HOME" ]]; then
-                do_rollback
-            fi
+            # En login inicial, garantizar un snapshot 100% fresco y limpio
+            log "PAM open_session detectado para '$TARGET_USER'. Forzando snapshot limpio..."
+            do_rollback
             exit 0
             ;;
         close_session)
-            # Comprobar si quedan otras sesiones activas del usuario
-            active_sessions=$(loginctl list-sessions --no-legend 2>/dev/null | awk -v u="$TARGET_USER" "$3 == u {print $1}" | wc -l)
-            if [[ $active_sessions -le 1 ]]; then
-                do_rollback
-            fi
+            log "PAM close_session detectado para '$TARGET_USER'. Ejecutando limpieza y rollback..."
+            do_rollback
             exit 0
             ;;
         *)
@@ -90,9 +85,9 @@ if [[ -n "${PAM_USER:-}" ]]; then
     esac
 fi
 
-# Invocación manual / CLI
+# Invocación manual / CLI / systemd
 case "${1:-}" in
-    reset|rollback)
+    reset|rollback|start|stop)
         do_rollback
         ;;
     status)

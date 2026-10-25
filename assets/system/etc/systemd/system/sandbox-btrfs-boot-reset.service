@@ -1,0 +1,12 @@
+[Unit]
+Description=Sandbox Btrfs Pristine State Reset on Boot
+Before=sddm.service display-manager.service systemd-user-sessions.service
+DefaultDependencies=no
+After=local-fs.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/sandbox-btrfs-manager.sh reset
+
+[Install]
+WantedBy=multi-user.target
