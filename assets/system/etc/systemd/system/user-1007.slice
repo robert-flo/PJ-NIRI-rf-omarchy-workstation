@@ -1,0 +1,8 @@
+[Unit]
+Description=Restricted Resource Slice for Guest Sandbox User
+Before=slices.target
+
+[Slice]
+CPUQuota=60%
+MemoryMax=8G
+TasksMax=512

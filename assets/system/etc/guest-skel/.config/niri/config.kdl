@@ -1,0 +1,35 @@
+// Minimal niri guest sandbox configuration
+spawn-at-startup "/usr/bin/brave-origin"
+
+input {
+    keyboard {
+        xkb {
+            layout "us,latam"
+        }
+    }
+    touchpad {
+        natural-scroll
+    }
+}
+
+layout {
+    gaps 12
+    center-focused-column "never"
+    default-column-width { proportion 0.5; }
+    focus-ring {
+        width 2
+        active-color "#89b4fa"
+        inactive-color "#313244"
+    }
+}
+
+binds {
+    Mod+Space { spawn "fuzzel"; }
+    Mod+B { spawn "/usr/bin/brave-origin"; }
+    Mod+Return { spawn "ghostty"; }
+    Mod+Q { close-window; }
+    Mod+M { quit; }
+    Mod+F { maximize-column; }
+    Mod+Left  { focus-column-left; }
+    Mod+Right { focus-column-right; }
+}
