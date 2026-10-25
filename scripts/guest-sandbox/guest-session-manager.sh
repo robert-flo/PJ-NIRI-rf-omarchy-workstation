@@ -2,7 +2,7 @@
 #
 # guest-session-manager.sh: Gestor de Sesión Amnésica Volátil (RAM tmpfs 8GB) para guest
 # Monta un tmpfs con flags de seguridad estrictos (nosuid,nodev) al iniciar sesión,
-# sincroniza la plantilla /etc/guest-skel/ y destruye todo rastro de RAM al cerrar sesión.
+# sincroniza la plantilla unificada /etc/amnesic-skel/ y destruye todo rastro de RAM al cerrar sesión.
 #
 
 set -eo pipefail
@@ -10,7 +10,7 @@ set -eo pipefail
 LOG_FILE="/var/log/guest-session.log"
 TARGET_USER="guest"
 TARGET_HOME="/home/guest"
-SKEL_DIR="/etc/guest-skel"
+SKEL_DIR="/etc/amnesic-skel"
 RAM_SIZE="8G"
 
 log() {
@@ -22,9 +22,9 @@ log() {
 }
 
 start_session() {
-    log "Iniciando aprovisionamiento de sesión amnésica para '$TARGET_USER'..."
+    log "Iniciando aprovisionamiento de sesión amnésica en RAM para '$TARGET_USER'..."
 
-    # 1. Asegurar punto de montaje
+    # 1. Asegurar punto de montaje limpio
     if [[ ! -d "$TARGET_HOME" ]]; then
         mkdir -p "$TARGET_HOME"
     fi
@@ -37,9 +37,9 @@ start_session() {
         log "$TARGET_HOME ya se encuentra montado en tmpfs."
     fi
 
-    # 3. Sincronizar plantilla limpia desde /etc/guest-skel
+    # 3. Sincronizar plantilla limpia desde /etc/amnesic-skel
     if [[ -d "$SKEL_DIR" ]]; then
-        log "Poblando $TARGET_HOME desde $SKEL_DIR..."
+        log "Poblando $TARGET_HOME desde plantilla maestra $SKEL_DIR..."
         cp -rT "$SKEL_DIR" "$TARGET_HOME"
     fi
 
@@ -54,19 +54,20 @@ stop_session() {
 
     # 1. Terminar procesos residuales del usuario guest
     if id "$TARGET_USER" &>/dev/null; then
-        local user_uid
-        user_uid=$(id -u "$TARGET_USER")
         pkill -u "$TARGET_USER" -9 2>/dev/null || true
-        # Detener unidad systemd user si está activa
-        systemctl stop "user@${user_uid}.service" 2>/dev/null || true
     fi
 
-    sleep 0.5
+    sleep 0.3
 
     # 2. Desmontar tmpfs (destrucción inmediata de los datos en RAM)
     if mountpoint -q "$TARGET_HOME"; then
         log "Desmontando tmpfs en $TARGET_HOME (vaciado y liberación de memoria RAM)..."
         umount -l "$TARGET_HOME" 2>/dev/null || umount -f "$TARGET_HOME" 2>/dev/null || true
+    fi
+
+    # 3. Limpiar cualquier remanente del directorio base de montaje
+    if [[ -d "$TARGET_HOME" ]]; then
+        rm -rf "$TARGET_HOME"/* "$TARGET_HOME"/.[!.]* 2>/dev/null || true
     fi
 
     log "Sesión cerrada. Cero datos en disco ni memoria."
@@ -84,7 +85,6 @@ if [[ -n "${PAM_USER:-}" ]]; then
             exit 0
             ;;
         close_session)
-            # Comprobar si quedan otras sesiones activas del usuario
             active_sessions=$(loginctl list-sessions --no-legend 2>/dev/null | awk -v u="$TARGET_USER" "$3 == u {print $1}" | wc -l)
             if [[ $active_sessions -le 1 ]]; then
                 stop_session

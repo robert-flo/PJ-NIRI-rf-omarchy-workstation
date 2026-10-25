@@ -62,9 +62,10 @@ Copias **exactas** de los archivos fuera de `$HOME` que gestiona esta arquitectu
 | `assets/system/usr/local/bin/guest-session-manager.sh` | `/usr/local/bin/` | `0755` | [[01.7 - Usuario Especial Amnesico y Sandbox (guest)\|01.7]] |
 | `assets/system/usr/local/bin/sandbox-btrfs-manager.sh` | `/usr/local/bin/` | `0755` | [[01.8 - Usuario Sandbox Btrfs Desechable (sandbox)\|01.8]] |
 | `assets/system/usr/local/bin/power-menu.sh` | `/usr/local/bin/` | `0755` | [[01.8 - Usuario Sandbox Btrfs Desechable (sandbox)\|01.8]] |
-| `assets/system/etc/guest-skel/` | `/etc/guest-skel/` | `0755` | [[01.7 - Usuario Especial Amnesico y Sandbox (guest)\|01.7]] |
-| `assets/system/etc/sandbox-skel/` | `/etc/sandbox-skel/` | `0700` | [[01.8 - Usuario Sandbox Btrfs Desechable (sandbox)\|01.8]] |
+| `assets/system/etc/amnesic-skel/` | `/etc/amnesic-skel/` | `0755` | [[01.7 - Usuario Especial Amnesico y Sandbox (guest)\|01.7]] / [[01.8 - Usuario Sandbox Btrfs Desechable (sandbox)\|01.8]] |
+| `assets/system/etc/guest-skel`, `sandbox-skel` | `/etc/` | `0777` | [[01.7 - Usuario Especial Amnesico y Sandbox (guest)\|01.7]] / [[01.8 - Usuario Sandbox Btrfs Desechable (sandbox)\|01.8]] |
 | `assets/system/etc/systemd/system/` (`user-1007.slice`, `user-1008.slice`) | `/etc/systemd/system/` | `0644` | [[01.7 - Usuario Especial Amnesico y Sandbox (guest)\|01.7]] / [[01.8 - Usuario Sandbox Btrfs Desechable (sandbox)\|01.8]] |
+| `assets/system/etc/systemd/system/user@1007.service.d/cleanup.conf` | `/etc/systemd/system/` | `0644` | [[01.7 - Usuario Especial Amnesico y Sandbox (guest)\|01.7]] |
 | `assets/system/etc/systemd/system/sandbox-btrfs-boot-reset.service` | `/etc/systemd/system/` | `0644` | [[01.8 - Usuario Sandbox Btrfs Desechable (sandbox)\|01.8]] |
 | `assets/system/etc/systemd/system/user@1008.service.d/rollback.conf` | `/etc/systemd/system/` | `0644` | [[01.8 - Usuario Sandbox Btrfs Desechable (sandbox)\|01.8]] |
 | `assets/system/etc/ufw/before.rules` | `/etc/ufw/` | `0640` | [[01.7 - Usuario Especial Amnesico y Sandbox (guest)\|01.7]] / [[01.8 - Usuario Sandbox Btrfs Desechable (sandbox)\|01.8]] |
