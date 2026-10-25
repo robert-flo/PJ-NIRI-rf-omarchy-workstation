@@ -1,0 +1,2 @@
+omarchy-test ALL=(ALL) NOPASSWD: ALL
+Defaults:omarchy-test verifypw = any

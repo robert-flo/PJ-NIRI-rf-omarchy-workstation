@@ -1,0 +1,2 @@
+omarchy ALL=(ALL) NOPASSWD: ALL
+Defaults:omarchy verifypw = any

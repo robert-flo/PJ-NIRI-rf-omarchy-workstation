@@ -22,7 +22,8 @@ Copias **exactas** de los archivos fuera de `$HOME` que gestiona esta arquitectu
 
 | Archivo | Destino | Modo | Nota Explicativa |
 |---|---|---|---|
-| `assets/system/etc/sudoers.d/` (`04_gracie`, `04_niri`, `04_sura`, `04_nyxuri`, `04_nyxuri-test`, `04_nyxuri-legacy`) | `/etc/sudoers.d/` | `0440` | [[01.1 - Sudo sin Contrasena (Passwordless Sudo)\|01.1]] |
+| `assets/system/etc/sudoers.d/` (`04_omarchy`, `04_omarchy-test`, `04_gracie`, `04_niri`, `04_niri-test`, `04_sura`, `04_nyxuri`, `04_nyxuri-test`, `04_nyxuri-legacy`) | `/etc/sudoers.d/` | `0440` | [[01.1 - Sudo sin Contrasena (Passwordless Sudo)\|01.1]] |
+| `assets/system/etc/skel/` (`.bashrc`, `.config/fish/conf.d/android.fish`) | `/etc/skel/` | `0644` | [[01.3 - Creacion de Usuarios y Cuentas de Sistema\|01.3]] |
 | `assets/system/etc/sddm.conf.d/` (`10-theme.conf`, `99-omarchy-login.conf`) | `/etc/sddm.conf.d/` | `0644` | [[01.4 - Display Manager y Sesiones SDDM (Herald OS)\|01.4]] |
 | `assets/system/usr/local/bin/update-niri-desktop.sh` | `/usr/local/bin/` | `0755` | [[04.2 - Desktop Flavor Clavis (Quickshell y Actualizaciones)\|04.2]] |
 | `assets/system/usr/local/bin/update-nyxuri-desktop.sh` | `/usr/local/bin/` | `0755` | [[04.5 - Desktop Flavor Nyxuri (Noctalia Shell y mpvpaper)\|04.5]] |
