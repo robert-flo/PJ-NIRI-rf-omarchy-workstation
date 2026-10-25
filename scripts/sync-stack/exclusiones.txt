@@ -45,5 +45,11 @@ __pycache__/
 *.pyc
 .pytest_cache/
 .mypy_cache/
+
+# Snapshots y respaldos históricos del sistema de archivos
+snapshots/
+snapshots/**
+.snapshots/
+.snapshots/**
 snapshots/
 snapshots

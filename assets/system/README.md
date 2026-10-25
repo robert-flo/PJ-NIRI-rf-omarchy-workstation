@@ -44,6 +44,8 @@ Copias **exactas** de los archivos fuera de `$HOME` que gestiona esta arquitectu
 | `assets/system/etc/profile.d/20-rclone.sh` | `/etc/profile.d/` | `0644` | [[02.3 - Espacio Colaborativo z-drive y Sincronizacion Cloud\|02.3]] |
 | `assets/system/etc/fish/conf.d/rclone.fish` | `/etc/fish/conf.d/` | `0644` | [[02.3 - Espacio Colaborativo z-drive y Sincronizacion Cloud\|02.3]] |
 | `assets/system/usr/local/bin/` (`sync-*`, `upload-moved-*`, `watch-moved`) | `/usr/local/bin/` | `0755` | [[02.3 - Espacio Colaborativo z-drive y Sincronizacion Cloud\|02.3]] |
+| `assets/system/etc/fuse.conf` | `/etc/fuse.conf` | `0644` | [[02.3 - Espacio Colaborativo z-drive y Sincronizacion Cloud\|02.3]] |
+| `assets/system/etc/systemd/system/rclone-gdrive-mount.service` | `/etc/systemd/system/` | `0644` | [[02.3 - Espacio Colaborativo z-drive y Sincronizacion Cloud\|02.3]] |
 | `assets/system/etc/systemd/system/` (`sync-*.service`, `sync-*.timer`) | `/etc/systemd/system/` | `0644` | [[02.3 - Espacio Colaborativo z-drive y Sincronizacion Cloud\|02.3]] |
 
 > [!WARNING]

@@ -1,0 +1,35 @@
+[Unit]
+Description=Montaje FUSE Multi-Usuario de Google Drive en /z-drive/cloud
+Documentation=https://rclone.org/commands/rclone_mount/
+After=network-online.target z-drive-perms.service
+Wants=network-online.target
+
+[Service]
+Type=notify
+ExecStartPre=/usr/bin/mkdir -p /z-drive/cloud /var/cache/rclone/cloud
+ExecStart=/usr/bin/rclone mount gdrive: /z-drive/cloud \
+  --config=/etc/rclone/rclone.conf \
+  --allow-other \
+  --gid=998 \
+  --umask=007 \
+  --vfs-cache-mode=full \
+  --vfs-cache-max-size=15G \
+  --vfs-cache-max-age=72h \
+  --dir-cache-time=72h \
+  --poll-interval=15s \
+  --attr-timeout=1s \
+  --vfs-write-back=5s \
+  --vfs-read-ahead=128M \
+  --buffer-size=64M \
+  --transfers=4 \
+  --checkers=8 \
+  --cache-dir=/var/cache/rclone/cloud \
+  --log-file=/var/log/rclone-cloud-mount.log \
+  --log-level=INFO
+ExecStop=/usr/bin/fusermount3 -uz /z-drive/cloud
+Restart=on-failure
+RestartSec=10
+TimeoutStartSec=60
+
+[Install]
+WantedBy=multi-user.target

@@ -130,6 +130,18 @@ else
     echo -e "  - Google Drive:                ${YELLOW}[!] NO DETECTADO${RESET} en rclone"
 fi
 
+if command -v rclone >/dev/null 2>&1 && rclone listremotes 2>/dev/null | grep -q "gdrive_boveda:"; then
+    echo -e "  - Bóveda Privada (AES-256):    ${GREEN}[✓ ACTIVA]${RESET} Remote 'gdrive_boveda:' configurado"
+else
+    echo -e "  - Bóveda Privada (AES-256):    ${YELLOW}[!] NO CONFIGURADA${RESET} en rclone"
+fi
+
+if systemctl is-active --quiet rclone-gdrive-mount.service 2>/dev/null; then
+    echo -e "  - Disco Virtual Cloud (FUSE):  ${GREEN}[✓ MONTADO]${RESET} en /z-drive/cloud (~/Cloud)"
+else
+    echo -e "  - Disco Virtual Cloud (FUSE):  ${DIM}[DESMONTADO]${RESET} (/z-drive/cloud inactivo)"
+fi
+
 if findmnt -M "$LOCAL_BTRFS_MOUNT" >/dev/null 2>&1; then
     AVAIL_LOCAL=$(/usr/bin/df -h "$LOCAL_BTRFS_MOUNT" | awk 'END {print $4}')
     echo -e "  - Disco Externo Btrfs:         ${GREEN}[✓ MONTADO]${RESET} en ${LOCAL_BTRFS_MOUNT} (${AVAIL_LOCAL} disponibles)"
@@ -179,7 +191,7 @@ print("  └" + "─" * (w1 + 2) + "┴" + "─" * (w2 + 2) + "┴" + "─" * (w
 
 echo ""
 echo -e "${BOLD}• Servicios Automáticos del Sistema (systemd):${RESET}"
-SERVICES=("sync-tries.timer" "sync-idalia.timer" "sync-uploads-gracie.timer" "z-drive-perms.service")
+SERVICES=("sync-tries.timer" "sync-idalia.timer" "sync-uploads-gracie.timer" "z-drive-perms.service" "rclone-gdrive-mount.service")
 for s in "${SERVICES[@]}"; do
     if systemctl is-active --quiet "$s" 2>/dev/null; then
         echo -e "  - ${s}: ${GREEN}[✓ ACTIVO]${RESET}"

@@ -40,14 +40,19 @@ echo "=================================================================="
 
 # 1. Comprobar dependencias
 echo "[1/6] Comprobando dependencias del sistema..."
-for cmd in rsync rclone systemctl inotifywait; do
+for cmd in rsync rclone systemctl inotifywait fusermount3; do
     if ! command -v "$cmd" >/dev/null 2>&1; then
-        echo "   [!] Instalando '$cmd' con pacman..."
-        pacman -S --needed --noconfirm "$cmd"
+        echo "   [!] Instalando dependencia requerida con pacman..."
+        pacman -S --needed --noconfirm "${cmd/fusermount3/fuse3}"
     else
         echo "   [✓] $cmd encontrado."
     fi
 done
+
+# Configurar soporte multi-usuario de FUSE
+if [[ -f /etc/fuse.conf ]]; then
+    sed -i 's/^#user_allow_other/user_allow_other/' /etc/fuse.conf
+fi
 
 # 2. Configurar rol en /etc/rclone/
 echo "[2/6] Configurando roles en /etc/rclone/..."
@@ -139,10 +144,24 @@ if [[ -d "$UNITS_DIR" ]]; then
     done
     systemctl daemon-reload
 
-    # Habilitar temporizadores
+    # Habilitar temporizadores y montaje
+    mkdir -p /z-drive/cloud /var/cache/rclone/cloud
+    chown -R root:wheel /z-drive/cloud
+    chmod 2770 /z-drive/cloud
+    setfacl -d -m u::rwx,g::rwx,o::--- /z-drive/cloud 2>/dev/null || true
+
+    for u in /home/* /etc/skel; do
+        [[ -d "$u" ]] && ln -sfn /z-drive/cloud "$u/Cloud"
+        if [[ "$u" != "/etc/skel" ]]; then
+            u_name="$(basename "$u")"
+            chown -h "$u_name:$u_name" "$u/Cloud" 2>/dev/null || true
+        fi
+    done
+
     systemctl enable --now sync-tries.timer sync-idalia.timer sync-uploads-gracie.timer
     systemctl enable --now sync-tries-watcher.service
-    echo "   [✓] Temporizadores y servicios del sistema habilitados y activos."
+    systemctl enable --now rclone-gdrive-mount.service
+    echo "   [✓] Temporizadores, watcher y montaje cloud FUSE habilitados y activos."
 fi
 
 # 7. Resumen final

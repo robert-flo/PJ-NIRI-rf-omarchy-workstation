@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 #
 # sync-all: Dispara la sincronización integral de todas las carpetas activas en /z-drive
+# Soporta opción de apagado automático seguro al concluir: --poweroff / --shutdown
 #
 
 set -eo pipefail
@@ -9,30 +10,126 @@ STATE_DIR="/z-drive/.sync-state"
 mkdir -p "$STATE_DIR"
 LOG_FILE="${STATE_DIR}/sync-all.log"
 
+POWEROFF=false
+DRY_RUN=false
+
+for arg in "$@"; do
+    case "$arg" in
+        --poweroff|--shutdown)
+            POWEROFF=true
+            ;;
+        -n|--dry-run)
+            DRY_RUN=true
+            ;;
+        -h|--help)
+            echo "Uso: $(basename "$0") [OPCIONES]"
+            echo ""
+            echo "Opciones:"
+            echo "  -n, --dry-run         Simula las sincronizaciones sin transferir ni borrar archivos."
+            echo "  --poweroff, --shutdown Supervisa la sincronización y apaga el equipo tras finalizar con éxito."
+            echo "  -h, --help            Muestra esta ayuda."
+            exit 0
+            ;;
+        *)
+            echo "Opción no reconocida: $arg" >&2
+            exit 1
+            ;;
+    esac
+done
+
 log() {
-  local msg="[$(date '+%Y-%m-%d %H:%M:%S')] [SYNC-ALL] $*"
-  echo "$msg"
-  echo "$msg" >> "$LOG_FILE"
+    local msg="[$(date '+%Y-%m-%d %H:%M:%S')] [SYNC-ALL] $*"
+    echo "$msg"
+    echo "$msg" >> "$LOG_FILE"
 }
 
-log "Iniciando ciclo global de sincronización en /z-drive..."
+notify() {
+    local title="$1"
+    local msg="$2"
+    local urgency="${3:-normal}"
+    if command -v notify-send >/dev/null 2>&1 && [[ -n "${WAYLAND_DISPLAY:-${DISPLAY:-}}" ]]; then
+        notify-send -u "$urgency" "$title" "$msg" 2>/dev/null || true
+    fi
+}
 
-# 1. Tries (Código)
+EXTRA_FLAGS=()
+[[ "$DRY_RUN" == true ]] && EXTRA_FLAGS+=("-n")
+
+echo "=================================================================="
+echo "          SINCRONIZACIÓN INTEGRAL DE /Z-DRIVE                     "
+echo "=================================================================="
+log "Iniciando ciclo global de sincronización en /z-drive (Poweroff: $POWEROFF, Dry-Run: $DRY_RUN)..."
+
+if [[ "$POWEROFF" == true ]]; then
+    notify "🌙 Supervisor de Apagado Activo" "La PC se apagará automáticamente al concluir todas las sincronizaciones." "normal"
+fi
+
+ERRORS=0
+
+# 1. Tries (Código + Bóveda Privada)
 if command -v sync-tries >/dev/null 2>&1; then
-  log ">> [1/3] Disparando sync-tries..."
-  sync-tries || log "ADVERTENCIA: sync-tries finalizó con advertencias."
+    echo ""
+    log ">> [1/3] Disparando sync-tries..."
+    if ! sync-tries "${EXTRA_FLAGS[@]}"; then
+        log "ADVERTENCIA: sync-tries finalizó con errores."
+        ERRORS=$((ERRORS + 1))
+    fi
 fi
 
 # 2. Idalia (Multimedia)
 if command -v sync-idalia >/dev/null 2>&1; then
-  log ">> [2/3] Disparando sync-idalia..."
-  sync-idalia || log "ADVERTENCIA: sync-idalia finalizó con advertencias."
+    echo ""
+    log ">> [2/3] Disparando sync-idalia..."
+    if ! sync-idalia "${EXTRA_FLAGS[@]}"; then
+        log "ADVERTENCIA: sync-idalia finalizó con errores."
+        ERRORS=$((ERRORS + 1))
+    fi
 fi
 
 # 3. Uploads-Gracie
 if command -v sync-uploads-gracie >/dev/null 2>&1; then
-  log ">> [3/3] Disparando sync-uploads-gracie..."
-  sync-uploads-gracie || log "ADVERTENCIA: sync-uploads-gracie finalizó con advertencias."
+    echo ""
+    log ">> [3/3] Disparando sync-uploads-gracie..."
+    if ! sync-uploads-gracie "${EXTRA_FLAGS[@]}"; then
+        log "ADVERTENCIA: sync-uploads-gracie finalizó con errores."
+        ERRORS=$((ERRORS + 1))
+    fi
 fi
 
-log "Sincronización integral de todas las carpetas finalizada."
+echo ""
+echo "=================================================================="
+if [[ $ERRORS -eq 0 ]]; then
+    log "[✓] Sincronización integral de todas las carpetas finalizada con ÉXITO."
+    notify "🟢 Sincronización Completa" "Todas las carpetas de /z-drive están al día." "normal"
+else
+    log "[!] Sincronización integral finalizada con $ERRORS error(es)."
+    notify "⚠️ Sincronización con Errores" "Se detectaron $ERRORS fallos durante el ciclo de sincronización." "critical"
+fi
+echo "=================================================================="
+
+# Supervisor de Apagado
+if [[ "$POWEROFF" == true ]]; then
+    if [[ $ERRORS -gt 0 ]]; then
+        ALERT_MSG="CANCELADO: El equipo NO se apagará porque se detectaron $ERRORS errores de sincronización."
+        log "SUPERVISOR APAGADO: $ALERT_MSG"
+        notify "❌ Apagado Cancelado" "$ALERT_MSG" "critical"
+        exit 1
+    else
+        log "SUPERVISOR APAGADO: Sincronización 100% exitosa. Iniciando cuenta regresiva de 30 segundos..."
+        notify "🌙 Apagado en 30 segundos" "Presiona Ctrl+C en la terminal para cancelar el apagado." "critical"
+        
+        for i in {30..1}; do
+            echo -ne "\r[🌙] Apagando el equipo en $i segundos (Presiona Ctrl+C para abortar)... "
+            sleep 1
+        done
+        echo ""
+
+        if [[ "$DRY_RUN" == true ]]; then
+            log "SUPERVISOR APAGADO: [DRY-RUN] Simulación completa. Omitiendo 'systemctl poweroff'."
+            echo "[✓] Modo Dry-Run activo: No se ejecutó el apagado real."
+        else
+            log "SUPERVISOR APAGADO: Ejecutando apagado del sistema (systemctl poweroff)..."
+            systemctl poweroff
+        fi
+    fi
+fi
