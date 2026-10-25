@@ -1,6 +1,31 @@
 # Reglas para agentes en este vault
 
-Este repositorio es un vault de Obsidian que define y mantiene la **arquitectura integral, bootstrap y operación por capas de la estación de trabajo** (Niri, Clavis, Nyxuri, Neovim dual, almacenamiento compartido y toolchain global) sobre Omarchy/Arch Linux. Debe coincidir exactamente con lo que realmente está aplicado y funcionando en la máquina.
+Este repositorio es un vault de Obsidian que define y mantiene la **arquitectura integral, bootstrap y operación por capas de la estación de trabajo** (Niri, Clavis, Nyxuri, Neovim dual, almacenamiento compartido, toolchain global y suite de desarrollo Google/Android) sobre Omarchy/Arch Linux. Debe coincidir exactamente con lo que realmente está aplicado y funcionando en la máquina.
+
+---
+
+## 🎯 Propósito, Visión y Principios Innegociables
+
+Este repositorio (`PJ-NIRI-rf-omarchy-workstation`) persigue una visión fundamental de la cual ningún agente debe desviarse:
+
+1. **Reproducibilidad e Idempotencia Absoluta:**
+   - La arquitectura debe ser 100% reproducible en cualquier máquina Arch/Omarchy nueva o existente.
+   - Cualquier script, playbook o procedimiento debe ser rigurosamente idempotente: ejecutarlo una o diez veces debe llevar siempre al mismo estado exacto, predecible y libre de errores (*el "punto dulce"* del sistema).
+
+2. **Cero Adivinanzas (Zero-Guesswork Policy):**
+   - El usuario no debe tener que reexplicar conceptos, decisiones o rutas previamente acordadas.
+   - Todo componente debe estar formalmente documentado con pasos secuenciales, rutas canónicas y bloques de código listos para copiar y ejecutar directamente a su destino final.
+   - Si un agente tiene dudas sobre el alcance de una acción destructiva (ej. wipes de usuario), debe preguntar explícitamente antes de actuar, pero nunca improvisar arquitectura o tomar atajos al margen de este vault.
+
+3. **Arquitectura Espejo del Sistema (`assets/system/`):**
+   - Ninguna configuración del sistema operativo (fuera de `$HOME`) debe quedar como un ajuste huérfano en la máquina.
+   - Todo archivo de sistema (`/etc/`, `/usr/`, plantillas `/etc/skel/`, servicios systemd, reglas de sudoers, etc.) **DEBE** tener su copia exacta e idéntica en `assets/system/<ruta absoluta>` y estar registrado en [[07.4 - Archivos de Sistema de Referencia (assets-system)]].
+   - *Regla de oro:* Si cambias un archivo en la máquina, actualizas su espejo en el vault; si despliegas en una máquina nueva, se instala desde `assets/system/`.
+
+4. **El "Punto Dulce" Multi-Usuario Permanente:**
+   - Todos los perfiles gestionados (`omarchy`, `niri`, `nyxuri`, etc.) deben disponer de sus herramientas compartidas (Neovim dual, SDK oficial de Android, fondos de pantalla, binarios globales) listas para usar sin fricción ni configuraciones manuales repetitivas en cada usuario.
+
+---
 
 ## Git
 
