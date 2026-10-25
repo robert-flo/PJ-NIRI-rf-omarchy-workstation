@@ -1,0 +1,7 @@
+[Unit]
+Description=Resource Slice for Sandbox Btrfs User
+Before=slices.target
+
+[Slice]
+CPUWeight=100
+TasksMax=2048

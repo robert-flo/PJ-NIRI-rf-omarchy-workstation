@@ -1,5 +1,13 @@
 polkit.addRule(function(action, subject) {
-    if (subject.user === "guest") {
+    if (subject.user === "guest" || subject.user === "sandbox") {
+        // Permitir apagar, reiniciar y suspender el equipo incluso si hay otras sesiones abiertas
+        if (action.id.indexOf("org.freedesktop.login1.power-off") === 0 ||
+            action.id.indexOf("org.freedesktop.login1.reboot") === 0 ||
+            action.id.indexOf("org.freedesktop.login1.suspend") === 0 ||
+            action.id.indexOf("org.freedesktop.login1.hibernate") === 0) {
+            return polkit.Result.YES;
+        }
+        // Bloquear cualquier otra acción administrativa (montaje de discos, paquetes, sudo, etc.)
         return polkit.Result.NO;
     }
 });

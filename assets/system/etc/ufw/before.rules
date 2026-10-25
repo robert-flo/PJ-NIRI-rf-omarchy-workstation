@@ -36,6 +36,14 @@
 -A ufw-before-output -m owner --uid-owner guest -d 10.0.0.0/8 -j REJECT
 -A ufw-before-output -m owner --uid-owner guest -d 172.16.0.0/12 -j REJECT
 -A ufw-before-output -m owner --uid-owner guest -d 169.254.0.0/16 -j REJECT
+
+# LAN Shield para usuario sandbox (UID 1008)
+-A ufw-before-output -m owner --uid-owner sandbox -p udp --dport 53 -j ACCEPT
+-A ufw-before-output -m owner --uid-owner sandbox -p tcp --dport 53 -j ACCEPT
+-A ufw-before-output -m owner --uid-owner sandbox -d 192.168.0.0/16 -j REJECT
+-A ufw-before-output -m owner --uid-owner sandbox -d 10.0.0.0/8 -j REJECT
+-A ufw-before-output -m owner --uid-owner sandbox -d 172.16.0.0/12 -j REJECT
+-A ufw-before-output -m owner --uid-owner sandbox -d 169.254.0.0/16 -j REJECT
 -A ufw-before-forward -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
 
 # drop INVALID packets (logs these in loglevel medium and higher)

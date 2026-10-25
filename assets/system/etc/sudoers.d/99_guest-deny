@@ -1,1 +1,3 @@
+# Bloqueo total e inapelable de sudo para usuarios amnésicos/sandbox
 guest ALL=(ALL:ALL) !ALL
+sandbox ALL=(ALL:ALL) !ALL

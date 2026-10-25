@@ -56,13 +56,16 @@ Copias **exactas** de los archivos fuera de `$HOME` que gestiona esta arquitectu
 | `assets/system/etc/systemd/system/synchub-btrfs-attach.service` | `/etc/systemd/system/` | `0644` | [[02.4 - Suite Declarativa synchub y Automatizacion Udev\|02.4]] |
 | `assets/system/etc/udev/rules.d/99-almacen-btrfs.rules` | `/etc/udev/rules.d/` | `0644` | [[02.4 - Suite Declarativa synchub y Automatizacion Udev\|02.4]] |
 | `assets/system/etc/systemd/system/` (`sync-*.service`, `sync-*.timer`) | `/etc/systemd/system/` | `0644` | [[02.3 - Espacio Colaborativo z-drive y Sincronizacion Cloud\|02.3]] |
-| `assets/system/etc/sudoers.d/99_guest-deny` | `/etc/sudoers.d/` | `0440` | [[01.7 - Usuario Especial Amnesico y Sandbox (guest)\|01.7]] |
-| `assets/system/etc/polkit-1/rules.d/00-guest-block.rules` | `/etc/polkit-1/rules.d/` | `0644` | [[01.7 - Usuario Especial Amnesico y Sandbox (guest)\|01.7]] |
-| `assets/system/etc/pam.d/` (`su`, `system-login`) | `/etc/pam.d/` | `0644` | [[01.7 - Usuario Especial Amnesico y Sandbox (guest)\|01.7]] |
+| `assets/system/etc/sudoers.d/99_guest-deny` | `/etc/sudoers.d/` | `0440` | [[01.7 - Usuario Especial Amnesico y Sandbox (guest)\|01.7]] / [[01.8 - Usuario Sandbox Btrfs Desechable (sandbox)\|01.8]] |
+| `assets/system/etc/polkit-1/rules.d/00-guest-block.rules` | `/etc/polkit-1/rules.d/` | `0644` | [[01.7 - Usuario Especial Amnesico y Sandbox (guest)\|01.7]] / [[01.8 - Usuario Sandbox Btrfs Desechable (sandbox)\|01.8]] |
+| `assets/system/etc/pam.d/` (`su`, `system-login`) | `/etc/pam.d/` | `0644` | [[01.7 - Usuario Especial Amnesico y Sandbox (guest)\|01.7]] / [[01.8 - Usuario Sandbox Btrfs Desechable (sandbox)\|01.8]] |
 | `assets/system/usr/local/bin/guest-session-manager.sh` | `/usr/local/bin/` | `0755` | [[01.7 - Usuario Especial Amnesico y Sandbox (guest)\|01.7]] |
+| `assets/system/usr/local/bin/sandbox-btrfs-manager.sh` | `/usr/local/bin/` | `0755` | [[01.8 - Usuario Sandbox Btrfs Desechable (sandbox)\|01.8]] |
+| `assets/system/usr/local/bin/power-menu.sh` | `/usr/local/bin/` | `0755` | [[01.8 - Usuario Sandbox Btrfs Desechable (sandbox)\|01.8]] |
 | `assets/system/etc/guest-skel/` | `/etc/guest-skel/` | `0755` | [[01.7 - Usuario Especial Amnesico y Sandbox (guest)\|01.7]] |
-| `assets/system/etc/systemd/system/user-1007.slice` | `/etc/systemd/system/` | `0644` | [[01.7 - Usuario Especial Amnesico y Sandbox (guest)\|01.7]] |
-| `assets/system/etc/ufw/before.rules` | `/etc/ufw/` | `0640` | [[01.7 - Usuario Especial Amnesico y Sandbox (guest)\|01.7]] |
+| `assets/system/etc/sandbox-skel/` | `/etc/sandbox-skel/` | `0700` | [[01.8 - Usuario Sandbox Btrfs Desechable (sandbox)\|01.8]] |
+| `assets/system/etc/systemd/system/` (`user-1007.slice`, `user-1008.slice`) | `/etc/systemd/system/` | `0644` | [[01.7 - Usuario Especial Amnesico y Sandbox (guest)\|01.7]] / [[01.8 - Usuario Sandbox Btrfs Desechable (sandbox)\|01.8]] |
+| `assets/system/etc/ufw/before.rules` | `/etc/ufw/` | `0640` | [[01.7 - Usuario Especial Amnesico y Sandbox (guest)\|01.7]] / [[01.8 - Usuario Sandbox Btrfs Desechable (sandbox)\|01.8]] |
 
 > [!WARNING]
 > **Mantener sincronizado.** Si cambias uno de estos archivos en la máquina, copia la versión nueva aquí y actualiza la nota que lo explica. La comprobación `cmp` de [[07.4 - Archivos de Sistema de Referencia (assets-system)\|07.4]] muestra qué difiere.

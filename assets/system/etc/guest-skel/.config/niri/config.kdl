@@ -1,4 +1,5 @@
-// Minimal niri guest sandbox configuration
+// Minimal niri Btrfs sandbox configuration
+spawn-at-startup "waybar"
 spawn-at-startup "/usr/bin/brave-origin"
 
 input {
@@ -28,8 +29,14 @@ binds {
     Mod+B { spawn "/usr/bin/brave-origin"; }
     Mod+Return { spawn "ghostty"; }
     Mod+Q { close-window; }
-    Mod+M { quit; }
+    Mod+M { spawn "/usr/local/bin/power-menu.sh"; }
     Mod+F { maximize-column; }
     Mod+Left  { focus-column-left; }
     Mod+Right { focus-column-right; }
+
+    // Audio volume keys
+    XF86AudioRaiseVolume { spawn "wpctl" "set-volume" "-l" "1.5" "@DEFAULT_AUDIO_SINK@" "5%+"; }
+    XF86AudioLowerVolume { spawn "wpctl" "set-volume" "@DEFAULT_AUDIO_SINK@" "5%-"; }
+    XF86AudioMute        { spawn "wpctl" "set-mute" "@DEFAULT_AUDIO_SINK@" "toggle"; }
+    XF86AudioMicMute     { spawn "wpctl" "set-mute" "@DEFAULT_AUDIO_SOURCE@" "toggle"; }
 }
