@@ -1,0 +1,2 @@
+niri-test ALL=(ALL) NOPASSWD: ALL
+Defaults:niri-test verifypw = any
