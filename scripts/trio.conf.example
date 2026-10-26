@@ -1,0 +1,12 @@
+# trio.conf.example — Configuración de kinds por rol para el trío
+#
+# Copiá este archivo a /usr/share/ravn/trio/trio.conf o apuntá la variable de entorno
+# PJ_TRIO_CONFIG a la ruta de tu archivo personalizado.
+#
+# Cada variable define el kind de agente a arrancar en el panel de dicho rol.
+# Dejá el valor vacío ("") si querés que el rol quede en un shell interactivo para
+# inicio manual.
+
+PM_KIND="agy"
+WK_KIND="agy"
+RV_KIND="agy"
