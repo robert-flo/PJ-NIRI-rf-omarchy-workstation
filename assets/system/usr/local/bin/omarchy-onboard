@@ -24,6 +24,8 @@ REPO_URL_PAGES="https://robert-flo.github.io/omarchy-personal-repo/stable/\$arch
 REPO_URL_RELEASES="https://github.com/robert-flo/omarchy-personal-repo/releases/download/pkg-stable"
 PACMAN_CONF="/etc/pacman.conf"
 OMARCHY_REPO_URL="https://github.com/robert-flo/omarchy.git"
+META_REPO_URL="https://github.com/robert-flo/pj-omarchy.git"
+WORKSPACE_DIR="/z/pj-omarchy"
 DEV_DIR="/z/fo-omarchy"
 
 ROLE=""
@@ -244,27 +246,44 @@ if [[ "$ROLE" == "padre" ]]; then
     fi
   fi
 
-  # 2.2 Despliegue del código fuente en /z/fo-omarchy (NUNCA en $HOME)
+  # 2.2 Despliegue del meta-workspace unificado en /z/pj-omarchy (NUNCA en $HOME)
   echo ""
-  log_info "Verificando repositorio fuente compartido en $DEV_DIR..."
-  if [[ -d "$DEV_DIR/.git" ]]; then
-    log_ok "Repositorio fuente $DEV_DIR ya existe."
-  else
-    log_info "Clonando repositorio fuente en $DEV_DIR (rama personal)..."
+  log_info "Verificando meta-workspace de la flota en $WORKSPACE_DIR..."
+  if [[ ! -d "$WORKSPACE_DIR/.git" ]]; then
+    log_info "Clonando meta-repositorio pj-omarchy en $WORKSPACE_DIR..."
     if [[ "$DRY_RUN" == true ]]; then
-      log_info "[DRY-RUN] git clone -b personal $OMARCHY_REPO_URL $DEV_DIR con permisos 2775 wheel"
+      log_info "[DRY-RUN] git clone $META_REPO_URL $WORKSPACE_DIR"
     else
       mkdir -p /z
-      git clone -b personal "$OMARCHY_REPO_URL" "$DEV_DIR"
-      chown -R "$INVOKING_USER:wheel" "$DEV_DIR"
-      chmod -R 2775 "$DEV_DIR"
-      find "$DEV_DIR" -type d -exec chmod g+s {} +
-      setfacl -R -m g:wheel:rwx "$DEV_DIR"
-      setfacl -R -d -m g:wheel:rwx "$DEV_DIR"
-      git -C "$DEV_DIR" config core.fileMode false
-      git config --system --add safe.directory "$DEV_DIR"
-      log_ok "Repositorio clonado y asegurado con permisos multi-usuario en $DEV_DIR."
+      git clone "$META_REPO_URL" "$WORKSPACE_DIR"
     fi
+  else
+    log_ok "Meta-workspace $WORKSPACE_DIR ya existe."
+  fi
+
+  # Asegurar la clonación de todos los repositorios hijos bajo la misma carpeta
+  log_info "Alineando repositorios hijos del workspace en $WORKSPACE_DIR (clone-repos.sh)..."
+  if [[ "$DRY_RUN" == true ]]; then
+    log_info "[DRY-RUN] Ejecutar $WORKSPACE_DIR/clone-repos.sh para asegurar los 6 repositorios"
+  else
+    if [[ -x "$WORKSPACE_DIR/clone-repos.sh" ]]; then
+      (cd "$WORKSPACE_DIR" && ./clone-repos.sh)
+    fi
+
+    # Permisos multi-usuario para todo el workspace
+    chown -R "$INVOKING_USER:wheel" "$WORKSPACE_DIR"
+    chmod -R 2775 "$WORKSPACE_DIR"
+    find "$WORKSPACE_DIR" -type d -exec chmod g+s {} +
+    setfacl -R -m g:wheel:rwx "$WORKSPACE_DIR"
+    setfacl -R -d -m g:wheel:rwx "$WORKSPACE_DIR"
+    find "$WORKSPACE_DIR" -maxdepth 2 -name ".git" -type d -exec git --git-dir={} config core.fileMode false \;
+    git config --system --add safe.directory "$WORKSPACE_DIR"
+    git config --system --add safe.directory "$WORKSPACE_DIR/*"
+
+    # Enlaces de retrocompatibilidad en /z/
+    [[ -L /z/fo-omarchy || -d /z/fo-omarchy ]] || ln -s "$WORKSPACE_DIR/fo-omarchy" /z/fo-omarchy
+    [[ -L /z/fork-docs || -d /z/fork-docs ]] || ln -s "$WORKSPACE_DIR/rf-fork-docs" /z/fork-docs
+    log_ok "Ecosistema completo unificado en $WORKSPACE_DIR (accesible como workspace multi-root)."
   fi
 
   # 2.3 Activar Modo Live con omarchy dev link
