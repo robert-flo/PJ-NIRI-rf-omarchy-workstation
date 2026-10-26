@@ -252,7 +252,7 @@ if [[ "$MODE" == "pull" ]]; then
     # 2. Descargar o actualizar desde Google Drive
     if command -v rclone >/dev/null 2>&1; then
         echo "[2/2] Descargando desde Google Drive (${CLOUD_DEST})..."
-        rclone copy "$CLOUD_DEST" "$SOURCE" -P --fast-list "${RCLONE_EXCLUDES[@]}" || true
+        rclone copy "$CLOUD_DEST" "$SOURCE" -P --fast-list --skip-links "${RCLONE_EXCLUDES[@]}" || true
 
         # Restaurar bóveda cifrada si existe
         if rclone listremotes | grep -q "gdrive_boveda:"; then
@@ -335,7 +335,7 @@ if [[ "$MODE" == "sync" && "$FORCE_DELETE" == false ]]; then
     # 0b. Si el disco local no superó el umbral o no está conectado, verificar en Google Drive
     if [[ "$DO_CLOUD" == true ]] && [[ $PENDING_DELETIONS -le $MAX_DELETIONS_ABS ]] && command -v rclone >/dev/null 2>&1; then
         TMP_RCLONE_LIST=$(mktemp /tmp/sync-tries-rclone.XXXXXX)
-        rclone sync "$SOURCE" "$CLOUD_DEST" --dry-run --fast-list -v "${RCLONE_EXCLUDES[@]}" 2>&1 \
+        rclone sync "$SOURCE" "$CLOUD_DEST" --dry-run --fast-list --skip-links -v "${RCLONE_EXCLUDES[@]}" 2>&1 \
             | grep "Skipped delete as --dry-run is set" \
             | grep -v -E "(/|[[:space:]])\.git/" \
             | sed -E 's/.* NOTICE: (.*): Skipped delete as --dry-run is set.*/\1/' \
@@ -444,7 +444,7 @@ if [[ "$DO_CLOUD" == true ]] && command -v rclone >/dev/null 2>&1; then
     else
         RCLONE_CMD+=("copy")
     fi
-    RCLONE_CMD+=("$SOURCE" "$CLOUD_DEST" -P --fast-list --drive-use-trash "${RCLONE_EXCLUDES[@]}")
+    RCLONE_CMD+=("$SOURCE" "$CLOUD_DEST" -P --fast-list --skip-links --drive-use-trash "${RCLONE_EXCLUDES[@]}")
     if [[ "$DRY_RUN" == true ]]; then
         RCLONE_CMD+=(--dry-run)
     fi

@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
-# Wrapper para invocar Neovim usando la configuración aislada 'cvim' (Craftzdog)
-# Utiliza NVIM_APPNAME para separar configuración (~/.config/cvim), plugins, caché y estado.
-NVIM_APPNAME="cvim" exec nvim "$@"
+# Invocación nativa XDG para cvim / Craftzdog (cero symlinks en $HOME)
+export NVIM_APPNAME="cvim"
+export XDG_CONFIG_DIRS="/z/nvims:${XDG_CONFIG_DIRS:-/etc/xdg}"
+exec /usr/bin/nvim "$@"
