@@ -1,0 +1,75 @@
+#!/usr/bin/env bash
+# fork-docs — Asistente global para la documentación canónica del fork personal
+set -euo pipefail
+
+DOCS_DIR="/z/fork-docs"
+URL_REMOTE="https://robert-flo.github.io/fork-docs/"
+URL_LOCAL="http://localhost:4000/fork-docs/"
+
+show_help() {
+  cat << 'HELP'
+fork-docs — Portal Documental y Estándar de Oro (Ecosistema Omarchy Personal)
+
+Uso:
+  fork-docs [COMANDO]
+
+Comandos principales:
+  open           Abre la documentación en el navegador (local si está activa, o remota)
+  serve          Inicia el servidor local Jekyll en segundo plano o interactivo
+  build          Compila el sitio estático en /z/fork-docs/_site
+  status         Comprueba el estado de /z/fork-docs y de los paquetes en pacman
+  update / pull  Actualiza el repositorio /z/fork-docs con upstream (git pull --ff-only)
+  path           Muestra la ruta canónica del repositorio (/z/fork-docs)
+  help           Muestra esta ayuda
+
+HELP
+}
+
+cmd="${1:-help}"
+
+case "$cmd" in
+  open)
+    if curl -s -o /dev/null -w "%{http_code}" "$URL_LOCAL" 2>/dev/null | grep -q "200\|301\|302"; then
+      echo "Abriendo servidor local ($URL_LOCAL)..."
+      xdg-open "$URL_LOCAL" &>/dev/null || sensible-browser "$URL_LOCAL" 2>/dev/null || true
+    else
+      echo "Abriendo portal oficial remoto ($URL_REMOTE)..."
+      xdg-open "$URL_REMOTE" &>/dev/null || sensible-browser "$URL_REMOTE" 2>/dev/null || true
+    fi
+    ;;
+  serve)
+    cd "$DOCS_DIR"
+    echo "Iniciando servidor Jekyll de Fork Docs en $URL_LOCAL..."
+    exec bundle exec jekyll serve --livereload --host 0.0.0.0
+    ;;
+  build)
+    cd "$DOCS_DIR"
+    echo "Compilando documentación estática..."
+    bundle exec jekyll build
+    ;;
+  status)
+    echo "=== Estado de fork-docs ($DOCS_DIR) ==="
+    git -C "$DOCS_DIR" status -sb
+    echo ""
+    echo "=== Estado del Repositorio [omarchy-personal] ==="
+    pacman -Sl omarchy-personal 2>/dev/null || echo "Repositorio no sincronizado o inactivo"
+    echo ""
+    echo "=== Paquetes Omarchy Instalados en el Sistema ==="
+    pacman -Q omarchy omarchy-settings hola-mundo 2>/dev/null || true
+    ;;
+  update|pull)
+    echo "Sincronizando $DOCS_DIR..."
+    git -C "$DOCS_DIR" pull --ff-only
+    ;;
+  path)
+    echo "$DOCS_DIR"
+    ;;
+  help|-h|--help)
+    show_help
+    ;;
+  *)
+    echo "Error: Comando '$cmd' desconocido." >&2
+    show_help
+    exit 1
+    ;;
+esac
