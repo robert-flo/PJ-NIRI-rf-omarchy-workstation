@@ -1,0 +1,37 @@
+{
+	"folders": [
+		{
+			"name": "0. Meta-Workspace (pj-omarchy)",
+			"path": "."
+		},
+		{
+			"name": "1. Código Fuente (fo-omarchy)",
+			"path": "fo-omarchy"
+		},
+		{
+			"name": "2. Fábrica Packaging (fo-omarchy-pkgs)",
+			"path": "fo-omarchy-pkgs"
+		},
+		{
+			"name": "3. CDN Pacman (rf-omarchy-personal-repo)",
+			"path": "rf-omarchy-personal-repo"
+		},
+		{
+			"name": "4. Estándar de Oro (rf-fork-docs)",
+			"path": "rf-fork-docs"
+		},
+		{
+			"name": "5. Histórico Scratchpad (rf-scratchpad)",
+			"path": "rf-scratchpad"
+		},
+		{
+			"name": "6. Archivo 2026-09 (rf-omarchy-archive)",
+			"path": "rf-omarchy-personal-archive-2026-09"
+		}
+	],
+	"settings": {
+		"files.exclude": {
+			"**/vendor/bundle": true
+		}
+	}
+}
