@@ -5,15 +5,15 @@
 # Fuente única de verdad de la lógica de onboarding de máquinas en la flota.
 # El empaquetado formal del comando se aborda en los tickets #18-#20.
 #
-# Para enlazarlo como comando global en la estación de trabajo:
-#   sudo ln -sfn "$PWD/scripts/omarchy-onboarding/onboard-machine.sh" /usr/local/bin/omarchy-onboard
+# No lo enlaces a mano en /usr/local/bin: el comando global llegará como
+# paquete ravn- (tickets #18-#20). Mientras tanto, ejecútalo desde el repo.
 # (Ver documentación en scripts/omarchy-onboarding/README.md)
 #
 # Procedimiento canónico multi-usuario para configurar máquinas de la flota
 # conforme a: https://robert-flo.github.io/fork-docs/guide/02-onboarding-maquinas/
 #
 # Soporta:
-#   - Modo PADRE (Estación de Desarrollo / Modo DEV / gracie)
+#   - Modo PADRE (Estación de Desarrollo / Modo DEV / omarchy)
 #   - Modo HIJA (Máquinas Cliente / Producción)
 #
 # Principio innegociable:
@@ -704,49 +704,16 @@ if [[ "$ROLE" == "padre" ]]; then
         exit 1
       fi
     fi
+  fi
 
-    # 2.4 Generar workspace multi-root JSON en $WORKSPACE_DIR/pj-omarchy.code-workspace
-    if [[ ${#REPO_DIRS[@]} -gt 0 ]]; then
-      WS_JSON_TMP="$(mktemp "${TMPDIR:-/tmp}/pj-omarchy.code-workspace.XXXXXX")"
-      CLEANUP_FILES+=("$WS_JSON_TMP")
-      {
-        echo "{"
-        echo '  "folders": ['
-        echo '    {'
-        echo '      "name": "pj-omarchy",'
-        echo '      "path": "."'
-        echo '    },'
-        total_repos="${#REPO_DIRS[@]}"
-        idx=0
-        for d in "${REPO_DIRS[@]}"; do
-          idx=$((idx + 1))
-          echo '    {'
-          echo "      \"name\": \"$d\","
-          echo "      \"path\": \"$d\""
-          if [[ $idx -lt $total_repos ]]; then
-            echo '    },'
-          else
-            echo '    }'
-          fi
-        done
-        echo '  ],'
-        echo '  "settings": {}'
-        echo "}"
-      } > "$WS_JSON_TMP"
-
-      WS_TARGET="$WORKSPACE_DIR/pj-omarchy.code-workspace"
-      if [[ -f "$WS_TARGET" ]] && cmp -s "$WS_JSON_TMP" "$WS_TARGET"; then
-        log_ok "[✓] ya el workspace multi-root pj-omarchy.code-workspace está actualizado."
-      else
-        log_change "[CAMBIO] Generando workspace multi-root en $WS_TARGET..."
-        CHANGES=$((CHANGES + 1))
-        if [[ "$DRY_RUN" == true ]]; then
-          run install -m 0644 -o "$INVOKING_USER" "$WS_JSON_TMP" "$WS_TARGET"
-        else
-          install -m 0644 -o "$INVOKING_USER" -g wheel "$WS_JSON_TMP" "$WS_TARGET"
-        fi
-      fi
-    fi
+  # 2.4 El .code-workspace es de pj-omarchy (versionado allí; ADR 0001 §3.3).
+  # Workstation no lo crea ni lo modifica: solo verifica que exista.
+  if [[ -f "$WORKSPACE_DIR/pj-omarchy.code-workspace" ]]; then
+    log_ok "[✓] ya existe $WORKSPACE_DIR/pj-omarchy.code-workspace (dueño: pj-omarchy)."
+  elif [[ "$DRY_RUN" == true ]]; then
+    log_info "[DRY-RUN] $WORKSPACE_DIR/pj-omarchy.code-workspace no existe; se esperaría tras ./pj listo."
+  else
+    log_err "Falta $WORKSPACE_DIR/pj-omarchy.code-workspace. Es de pj-omarchy: actualizá ese repo (git pull). Workstation no lo crea; se continúa."
   fi
 
   # 2.5 Permisos y ACLs en $WORKSPACE_DIR (sólo si hay drift detectado)
@@ -957,12 +924,17 @@ else
       echo "[DRY-RUN] omarchy refresh herdr"
     fi
   else
+    herdr_rc=0
     if [[ $EUID -eq 0 && -n "${SUDO_USER:-}" ]]; then
-      sudo -u "$SUDO_USER" omarchy refresh herdr 2>/dev/null || true
+      sudo -u "$SUDO_USER" omarchy refresh herdr || herdr_rc=$?
     else
-      omarchy refresh herdr 2>/dev/null || true
+      omarchy refresh herdr || herdr_rc=$?
     fi
-    log_ok "[✓] ya los espacios de Herdr fueron actualizados."
+    if [[ $herdr_rc -eq 0 ]]; then
+      log_ok "[✓] ya los espacios de Herdr fueron actualizados."
+    else
+      log_err "omarchy refresh herdr falló (código $herdr_rc); se continúa sin marcarlo como actualizado. Revisá Herdr o la sesión gráfica."
+    fi
   fi
 fi
 
