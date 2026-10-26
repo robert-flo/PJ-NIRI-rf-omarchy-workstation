@@ -32,4 +32,25 @@ mkdir -p "$tmp/pj-demo/.trio/42" && echo '{}' > "$tmp/pj-demo/.trio/42/status.js
 out="$("$aqui/pj-trio" --dry-run "$tmp/pj-demo" 42 2>&1)"
 grep -q 'no se reenvía' <<<"$out" || fallo "reenvío del arranque"
 
+grep -q 'needs-roberto' <<<"$k" || fallo "regla de fallo definitivo"
+grep -q -- '--notify' <<<"$k" || fallo "aviso notify-send"
+grep -qi 'UNA vez' <<<"$k" || fallo "reintento único"
+
+# trio-status: esquema, conserva claves, dry-run sin escribir, notify con stub.
+ts="$aqui/trio-status"
+d="$tmp/pj-demo/.trio/43"
+out="$("$ts" --dry-run --notify "$d" needs-roberto wk --error x 2>&1)"
+grep -q 'notify-send' <<<"$out" || fallo "dry-run sin notify-send"
+[[ ! -e "$d" ]] || fallo "trio-status --dry-run escribió"
+"$ts" "$d" en-curso wk --pr https://e/pr/1 --head abc
+mkdir -p "$tmp/bin"
+printf '#!/bin/sh\necho "$@" > "%s/notificado"\n' "$tmp" > "$tmp/bin/notify-send"
+chmod +x "$tmp/bin/notify-send"
+PATH="$tmp/bin:$PATH" "$ts" --notify "$d" needs-roberto wk --intentos 2 --error "wk ausente"
+jq -e '.estado=="needs-roberto" and .paso=="wk" and .error=="wk ausente" and .intentos==2
+    and .pr=="https://e/pr/1" and .head=="abc" and .ticket=="43" and (.timestamp|length>0)' \
+    "$d/status.json" >/dev/null || fallo "esquema de status.json"
+grep -q 'needs-roberto' "$tmp/notificado" || fallo "notify-send no se llamó"
+if "$ts" "$d" raro wk 2>/dev/null; then fallo "aceptó estado inválido"; fi
+
 echo "OK"

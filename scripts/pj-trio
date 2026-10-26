@@ -194,6 +194,16 @@ if [[ -z "$prompt_template" ]]; then
     done
 fi
 
+# Helper de status.json: junto a pj-trio, en /usr/share/ravn/trio o en el PATH.
+trio_status="${script_dir}/trio-status"
+if [[ ! -x "$trio_status" ]]; then
+    if [[ -x /usr/share/ravn/trio/trio-status ]]; then
+        trio_status=/usr/share/ravn/trio/trio-status
+    else
+        trio_status="$(command -v trio-status || echo trio-status)"
+    fi
+fi
+
 renderizar_kickoff() {
     if [[ -z "$prompt_template" || ! -f "$prompt_template" ]]; then
         echo "Error: no se encontró trio-pm-prompt.md (definí PJ_TRIO_PM_PROMPT)." >&2
@@ -209,6 +219,7 @@ renderizar_kickoff() {
     t="${t//\{\{AGENTE_PM\}\}/$agent_pm}"
     t="${t//\{\{AGENTE_WK\}\}/$agent_wk}"
     t="${t//\{\{AGENTE_RV\}\}/$agent_rv}"
+    t="${t//\{\{TRIO_STATUS\}\}/$trio_status}"
     printf '%s\n' "$t"
 }
 
@@ -252,7 +263,7 @@ enviar_kickoff() {
     if [[ "$dry_run" -eq 1 ]]; then
         echo "[dry-run] mkdir -p \"$trio_dir\""
         echo "[dry-run] herdr agent prompt \"$agent_pm\" \"<trio-pm-prompt.md renderizado>\""
-        echo "[dry-run] escribir ${trio_dir}/status.json {\"ticket\":\"${ticket}\",\"fase\":\"plan\"}"
+        "$trio_status" --dry-run "$trio_dir" en-curso plan
         return 0
     fi
     local out
@@ -261,8 +272,7 @@ enviar_kickoff() {
         echo "Pegalo a mano: pj-trio --print-kickoff ${project_name} ${ticket}${repo_arg:+ --repo $repo_arg}" >&2
         return 0
     fi
-    mkdir -p "$trio_dir"
-    jq -n --arg t "$ticket" '{ticket: $t, fase: "plan"}' > "${trio_dir}/status.json"
+    "$trio_status" "$trio_dir" en-curso plan
 }
 
 # 5. Verificación de agentes disponibles para agy

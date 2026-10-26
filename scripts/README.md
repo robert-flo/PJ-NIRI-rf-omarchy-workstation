@@ -80,4 +80,8 @@ Si ejecutás `pj-trio` una segunda vez con los mismos argumentos:
 - **Merge:** tras `APRUEBO <sha>` de RV, el PM mergea con `gh pr merge --squash --delete-branch --match-head-commit <sha>` sin esperar otra orden.
 - **Worktree nuevo por ticket**, siempre; nunca se reutiliza uno viejo.
 - **Identidad git:** `TRIO_GIT_NAME`/`TRIO_GIT_EMAIL` de la config; `pj-trio` la fija con `git config` local en el meta-repo y el miembro (los worktrees la heredan). El PM no la toca.
+- **Reintento y aviso (#61):** si un paso falla (wait con error o vencido; agente blocked, agent_prompt_stalled, unknown o ausente; idle sin archivo de entrega), el PM lo reintenta una sola vez. Si vuelve a fallar se detiene, escribe `status.json` con `needs-roberto` y la cola del panel, y lanza `notify-send`. Nunca responde por su cuenta un diálogo de aprobación. Las alertas al teléfono quedan fuera de alcance.
+- **`trio-status`:** helper que escribe `status.json` y avisa:
+  `trio-status [--dry-run] [--notify] [--cola-de <agente>] [--error <texto>] [--pr <url>] [--head <sha>] [--intentos N] <trio_dir> <estado> <paso>`.
+  Esquema: `ticket`, `estado` (`en-curso`|`hecho`|`needs-roberto`), `paso` (`plan`|`wk`|`rv`|`merge`|`cierre`), `error`, `intentos`, `timestamp` (ISO 8601), `pr`, `head`, `cola`. Conserva las claves previas del archivo.
 - **Prueba sin herdr:** `scripts/tests/pj-trio-dry-run.sh`.
