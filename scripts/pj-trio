@@ -1,0 +1,287 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# pj-trio — Inicializador idempotente de paneles herdr para el trío (PM, WK, RV)
+#
+# Uso: pj-trio [--dry-run] <repo> <ticket>
+#
+# Crea o reutiliza un workspace en herdr con tres paneles:
+# - PM-<ticket> (panel raíz, izquierda)
+# - WK-<ticket> (panel superior derecho)
+# - RV-<ticket> (panel inferior derecho)
+#
+# En cada panel arranca el agente configurado para el rol correspondiente.
+# Si el kind está vacío, deja un shell interactivo para inicio manual.
+
+mostrar_uso() {
+    cat <<'EOF'
+Uso: pj-trio [--dry-run] <repo> <ticket>
+
+Argumentos:
+  <repo>       Ruta a un checkout git o nombre de directorio bajo $PJ_TRIO_ROOT.
+  <ticket>     Identificador numérico o alfanumérico del ticket / issue.
+
+Opciones:
+  --dry-run    Muestra los comandos sin ejecutarlos.
+  -h, --help   Muestra esta ayuda.
+EOF
+}
+
+# 1. Parseo de argumentos
+dry_run=0
+positional=()
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --dry-run)
+            dry_run=1
+            shift
+            ;;
+        -h|--help)
+            mostrar_uso
+            exit 0
+            ;;
+        -*)
+            echo "Error: opción desconocida '$1'" >&2
+            mostrar_uso >&2
+            exit 1
+            ;;
+        *)
+            positional+=("$1")
+            shift
+            ;;
+    esac
+done
+
+if [[ ${#positional[@]} -ne 2 ]]; then
+    echo "Error: se requieren exactamente dos argumentos (<repo> y <ticket>)." >&2
+    mostrar_uso >&2
+    exit 1
+fi
+
+repo_arg="${positional[0]}"
+ticket="${positional[1]}"
+
+# 2. Resolución del repositorio git
+target_dir=""
+if [[ -d "$repo_arg" ]]; then
+    target_dir="$repo_arg"
+elif [[ -n "${PJ_TRIO_ROOT:-}" && -d "${PJ_TRIO_ROOT}/${repo_arg}" ]]; then
+    target_dir="${PJ_TRIO_ROOT}/${repo_arg}"
+else
+    echo "Error: no se encontró el directorio del repositorio '$repo_arg'" >&2
+    if [[ -z "${PJ_TRIO_ROOT:-}" ]]; then
+        echo "Pista: podés pasar una ruta existente o configurar \$PJ_TRIO_ROOT." >&2
+    fi
+    exit 1
+fi
+
+if ! repo_root="$(git -C "$target_dir" rev-parse --show-toplevel 2>/dev/null)"; then
+    echo "Error: '$target_dir' no es un checkout git válido." >&2
+    exit 1
+fi
+
+repo_name="$(basename "$repo_root")"
+ws_label="trio ${repo_name}#${ticket}"
+
+# 3. Carga de configuración de kinds por rol
+PM_KIND=""
+WK_KIND=""
+RV_KIND=""
+
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+config_file="${PJ_TRIO_CONFIG:-/usr/share/ravn/trio/trio.conf}"
+
+if [[ ! -f "$config_file" ]]; then
+    if [[ -f "${repo_root}/.trio/trio.conf" ]]; then
+        config_file="${repo_root}/.trio/trio.conf"
+    elif [[ -f "${script_dir}/trio.conf.example" ]]; then
+        config_file="${script_dir}/trio.conf.example"
+    elif [[ -f "${repo_root}/scripts/trio.conf.example" ]]; then
+        config_file="${repo_root}/scripts/trio.conf.example"
+    fi
+fi
+
+if [[ -f "$config_file" ]]; then
+    # shellcheck source=/dev/null
+    source "$config_file"
+fi
+
+# 4. Modo --dry-run
+if [[ "$dry_run" -eq 1 ]]; then
+    echo "[dry-run] Repositorio resuelto: $repo_root ($repo_name)"
+    echo "[dry-run] Workspace label: $ws_label"
+    echo "[dry-run] Archivo de configuración: $config_file"
+    echo "[dry-run] Kinds: PM='${PM_KIND}' WK='${WK_KIND}' RV='${RV_KIND}'"
+    echo ""
+    echo "[dry-run] herdr workspace create --cwd \"$repo_root\" --label \"$ws_label\" --no-focus"
+    echo "[dry-run] herdr pane rename \"<id_pm>\" \"PM-${ticket}\""
+    echo "[dry-run] herdr pane split \"<id_pm>\" --direction right --no-focus --cwd \"$repo_root\""
+    echo "[dry-run] herdr pane rename \"<id_wk>\" \"WK-${ticket}\""
+    echo "[dry-run] herdr pane split \"<id_wk>\" --direction down --no-focus --cwd \"$repo_root\""
+    echo "[dry-run] herdr pane rename \"<id_rv>\" \"RV-${ticket}\""
+    
+    agent_pm=$(echo "pm-${ticket}" | tr '[:upper:]' '[:lower:]')
+    agent_wk=$(echo "wk-${ticket}" | tr '[:upper:]' '[:lower:]')
+    agent_rv=$(echo "rv-${ticket}" | tr '[:upper:]' '[:lower:]')
+
+    if [[ -n "$PM_KIND" ]]; then
+        echo "[dry-run] herdr agent start \"$agent_pm\" --kind \"$PM_KIND\" --pane \"<id_pm>\""
+    else
+        echo "[dry-run] # PM_KIND vacío: se deja el shell en panel PM"
+    fi
+
+    if [[ -n "$WK_KIND" ]]; then
+        echo "[dry-run] herdr agent start \"$agent_wk\" --kind \"$WK_KIND\" --pane \"<id_wk>\""
+    else
+        echo "[dry-run] # WK_KIND vacío: se deja el shell en panel WK"
+    fi
+
+    if [[ -n "$RV_KIND" ]]; then
+        echo "[dry-run] herdr agent start \"$agent_rv\" --kind \"$RV_KIND\" --pane \"<id_rv>\""
+    else
+        echo "[dry-run] # RV_KIND vacío: se deja el shell en panel RV"
+    fi
+
+    echo ""
+    echo "Workspace ID: <simulado> ($ws_label)"
+    echo "Paneles y roles:"
+    echo "  - PM-${ticket} ($agent_pm) en <id_pm>"
+    echo "  - WK-${ticket} ($agent_wk) en <id_wk>"
+    echo "  - RV-${ticket} ($agent_rv) en <id_rv>"
+    echo "Comando para adjuntarte:"
+    echo "  herdr workspace focus <simulado> && herdr"
+    exit 0
+fi
+
+# 5. Verificación de herdr
+if ! command -v herdr >/dev/null 2>&1; then
+    echo "Error: el comando 'herdr' no está instalado en el PATH." >&2
+    exit 1
+fi
+
+if ! ws_list_json="$(herdr workspace list 2>&1)"; then
+    echo "Error: no se pudo comunicar con el servidor de herdr." >&2
+    echo "Detalle: $ws_list_json" >&2
+    echo "Asegurate de que el servidor esté activo ejecutando 'herdr server' o abriendo 'herdr'." >&2
+    exit 1
+fi
+
+# 6. Creación o reutilización del workspace (idempotente)
+existing_ws_id="$(echo "$ws_list_json" | jq -r --arg label "$ws_label" '.result.workspaces[]? | select(.label == $label) | .workspace_id' | head -n 1)"
+
+ws_id=""
+pm_pane=""
+wk_pane=""
+rv_pane=""
+
+if [[ -n "$existing_ws_id" ]]; then
+    ws_id="$existing_ws_id"
+    panes_json="$(herdr pane list --workspace "$ws_id")"
+    
+    pm_pane="$(echo "$panes_json" | jq -r --arg l "PM-${ticket}" '.result.panes[]? | select(.label == $l) | .pane_id' | head -n 1)"
+    wk_pane="$(echo "$panes_json" | jq -r --arg l "WK-${ticket}" '.result.panes[]? | select(.label == $l) | .pane_id' | head -n 1)"
+    rv_pane="$(echo "$panes_json" | jq -r --arg l "RV-${ticket}" '.result.panes[]? | select(.label == $l) | .pane_id' | head -n 1)"
+
+    # Si faltan paneles pero existe al menos un panel raíz, completamos la topología
+    if [[ -z "$pm_pane" || -z "$wk_pane" || -z "$rv_pane" ]]; then
+        pane_count="$(echo "$panes_json" | jq '.result.panes | length')"
+        if [[ "$pane_count" -eq 1 ]]; then
+            pm_pane="$(echo "$panes_json" | jq -r '.result.panes[0].pane_id')"
+            herdr pane rename "$pm_pane" "PM-${ticket}" >/dev/null
+            
+            split_wk="$(herdr pane split "$pm_pane" --direction right --no-focus --cwd "$repo_root")"
+            wk_pane="$(echo "$split_wk" | jq -r '.result.pane.pane_id')"
+            herdr pane rename "$wk_pane" "WK-${ticket}" >/dev/null
+            
+            split_rv="$(herdr pane split "$wk_pane" --direction down --no-focus --cwd "$repo_root")"
+            rv_pane="$(echo "$split_rv" | jq -r '.result.pane.pane_id')"
+            herdr pane rename "$rv_pane" "RV-${ticket}" >/dev/null
+        fi
+    fi
+else
+    create_json="$(herdr workspace create --cwd "$repo_root" --label "$ws_label" --no-focus)"
+    if echo "$create_json" | jq -e '.error' >/dev/null 2>&1; then
+        err_msg="$(echo "$create_json" | jq -r '.error.message // .error.code')"
+        echo "Error al crear el workspace en herdr: $err_msg" >&2
+        exit 1
+    fi
+
+    ws_id="$(echo "$create_json" | jq -r '.result.workspace.workspace_id')"
+    pm_pane="$(echo "$create_json" | jq -r '.result.root_pane.pane_id')"
+    herdr pane rename "$pm_pane" "PM-${ticket}" >/dev/null
+
+    split_wk="$(herdr pane split "$pm_pane" --direction right --no-focus --cwd "$repo_root")"
+    if echo "$split_wk" | jq -e '.error' >/dev/null 2>&1; then
+        err_msg="$(echo "$split_wk" | jq -r '.error.message // .error.code')"
+        echo "Error al dividir el panel para WK: $err_msg" >&2
+        exit 1
+    fi
+    wk_pane="$(echo "$split_wk" | jq -r '.result.pane.pane_id')"
+    herdr pane rename "$wk_pane" "WK-${ticket}" >/dev/null
+
+    split_rv="$(herdr pane split "$wk_pane" --direction down --no-focus --cwd "$repo_root")"
+    if echo "$split_rv" | jq -e '.error' >/dev/null 2>&1; then
+        err_msg="$(echo "$split_rv" | jq -r '.error.message // .error.code')"
+        echo "Error al dividir el panel para RV: $err_msg" >&2
+        exit 1
+    fi
+    rv_pane="$(echo "$split_rv" | jq -r '.result.pane.pane_id')"
+    herdr pane rename "$rv_pane" "RV-${ticket}" >/dev/null
+fi
+
+# 7. Inicio de agentes por rol
+iniciar_agente_rol() {
+    local role="$1"
+    local pane_id="$2"
+    local kind="$3"
+
+    if [[ -z "$kind" ]]; then
+        # Kind vacío: queda el shell interactivo para inicio manual
+        return 0
+    fi
+
+    local agent_name
+    agent_name="$(echo "${role}-${ticket}" | tr '[:upper:]' '[:lower:]')"
+
+    local live_agents
+    live_agents="$(herdr agent list 2>/dev/null || true)"
+    if echo "$live_agents" | jq -e --arg p "$pane_id" --arg n "$agent_name" \
+        '.result.agents[]? | select(.pane_id == $p or .name == $n)' >/dev/null 2>&1; then
+        return 0
+    fi
+
+    local start_output
+    if ! start_output="$(herdr agent start "$agent_name" --kind "$kind" --pane "$pane_id" 2>&1)"; then
+        # Si el agente requiere interacción o confirmación inicial (ej. prompts de bienvenida o permisos),
+        # herdr reporta agent_not_ready. El proceso queda corriendo en el panel.
+        if ! echo "$start_output" | jq -e '.error.code == "agent_not_ready"' >/dev/null 2>&1; then
+            local err_msg
+            err_msg="$(echo "$start_output" | jq -r '.error.message // empty' 2>/dev/null || true)"
+            if [[ -n "$err_msg" ]]; then
+                echo "Aviso: no se pudo iniciar automáticamente el agente para ${role}: ${err_msg}" >&2
+            else
+                echo "Aviso: no se pudo iniciar automáticamente el agente para ${role}: ${start_output}" >&2
+            fi
+        fi
+    fi
+}
+
+iniciar_agente_rol "PM" "$pm_pane" "$PM_KIND"
+iniciar_agente_rol "WK" "$wk_pane" "$WK_KIND"
+iniciar_agente_rol "RV" "$rv_pane" "$RV_KIND"
+
+agent_pm="$(echo "pm-${ticket}" | tr '[:upper:]' '[:lower:]')"
+agent_wk="$(echo "wk-${ticket}" | tr '[:upper:]' '[:lower:]')"
+agent_rv="$(echo "rv-${ticket}" | tr '[:upper:]' '[:lower:]')"
+
+# 8. Salida final
+cat <<EOF
+Workspace ID: $ws_id ($ws_label)
+Paneles y roles:
+  - PM-${ticket} ($agent_pm) en $pm_pane
+  - WK-${ticket} ($agent_wk) en $wk_pane
+  - RV-${ticket} ($agent_rv) en $rv_pane
+Comando para adjuntarte:
+  herdr workspace focus $ws_id && herdr
+EOF
