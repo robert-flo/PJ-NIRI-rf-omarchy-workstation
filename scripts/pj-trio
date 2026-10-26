@@ -6,9 +6,9 @@ set -euo pipefail
 # Uso: pj-trio [--dry-run] [--no-kickoff] [--print-kickoff] <proyecto> <ticket> [--repo <miembro>]
 #
 # Crea o reutiliza un workspace en herdr con tres tabs independientes a pantalla completa:
-# - pm: agente PM-<proyecto> (panel PM-<ticket>, nombre herdr pm-<proyecto>)
-# - wk: agente WK-<proyecto> (panel WK-<ticket>, nombre herdr wk-<proyecto>)
-# - rv: agente RV-<proyecto> (panel RV-<ticket>, nombre herdr rv-<proyecto>)
+# - pm: agente PM-<proyecto> (panel PM-<ticket>, nombre herdr pm-<proyecto>-<ticket>)
+# - wk: agente WK-<proyecto> (panel WK-<ticket>, nombre herdr wk-<proyecto>-<ticket>)
+# - rv: agente RV-<proyecto> (panel RV-<ticket>, nombre herdr rv-<proyecto>-<ticket>)
 #
 # Además fija la identidad git del meta-repo y del miembro (TRIO_GIT_NAME/EMAIL)
 # y envía al PM el prompt de arranque (trio-pm-prompt.md) una sola vez por ticket:
@@ -173,9 +173,11 @@ if [[ -f "$config_file" ]]; then
     source "$config_file"
 fi
 
-# 4b. Nombres de agente por proyecto (no por ticket) y prompt de arranque
+# 4b. Nombres de agente por proyecto y ticket (permite varios tríos por proyecto)
 nombre_agente() {
-    echo "${1}-${project_name}" | tr '[:upper:]' '[:lower:]'
+    local t
+    t="$(echo "$ticket" | tr '[:upper:]' '[:lower:]' | tr -c 'a-z0-9\n' '-')"
+    echo "${1}-${project_name}-${t}" | tr '[:upper:]' '[:lower:]'
 }
 agent_pm="$(nombre_agente pm)"
 agent_wk="$(nombre_agente wk)"
@@ -577,7 +579,7 @@ iniciar_agente_rol() {
     # El nombre es por proyecto: si ya vive en otro pane (otro ticket abierto), no se duplica.
     if echo "$live_agents" | jq -e --arg n "$agent_name" \
         '.result.agents[]? | select(.name == $n)' >/dev/null 2>&1; then
-        echo "Aviso: el agente '${agent_name}' ya corre en otro pane; cerrá ese trío antes de abrir otro ticket de ${project_name}." >&2
+        echo "Aviso: el agente '${agent_name}' ya corre en otro pane; ese ticket ya tiene su trío abierto." >&2
         return 0
     fi
 
