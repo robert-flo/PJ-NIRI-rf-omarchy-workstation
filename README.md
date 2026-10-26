@@ -97,7 +97,7 @@ PJ-NIRI-rf-omarchy-workstation/
 
 | Usuario | Rol en la Máquina | Entorno de Escritorio | Dotfiles y Gestión |
 |---|---|---|---|
-| **`omarchy` / `gracie`** | Administración del Sistema | Omarchy / Hyprland base | Dotfiles privados (`sura-home`) |
+| **`omarchy`** | Administración del Sistema | Omarchy / Hyprland base | Dotfiles privados (`sura-home`) |
 | **`niri`** | Producción Wayland Clavis | `niri-edge` + Clavis Shell | `robert-flo/niri-dotfiles` (dotbare) |
 | **`sura`** | Testbench Visual Clavis | `niri-edge` + Clavis Shell | Desechable (recreable desde dotfiles) |
 | **`nyxuri`** | Producción Wayland Nyxuri | `niri-edge` + Noctalia Shell | `robert-flo/PJ-NIRI-fo-nyxuri` |
