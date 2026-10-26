@@ -5,15 +5,15 @@
 # Fuente única de verdad de la lógica de onboarding de máquinas en la flota.
 # El empaquetado formal del comando se aborda en los tickets #18-#20.
 #
-# Para enlazarlo como comando global en la estación de trabajo:
-#   sudo ln -sfn "$PWD/scripts/omarchy-onboarding/onboard-machine.sh" /usr/local/bin/omarchy-onboard
+# No lo enlaces a mano en /usr/local/bin: el comando global llegará como
+# paquete ravn- (tickets #18-#20). Mientras tanto, ejecútalo desde el repo.
 # (Ver documentación en scripts/omarchy-onboarding/README.md)
 #
 # Procedimiento canónico multi-usuario para configurar máquinas de la flota
 # conforme a: https://robert-flo.github.io/fork-docs/guide/02-onboarding-maquinas/
 #
 # Soporta:
-#   - Modo PADRE (Estación de Desarrollo / Modo DEV / gracie)
+#   - Modo PADRE (Estación de Desarrollo / Modo DEV / omarchy)
 #   - Modo HIJA (Máquinas Cliente / Producción)
 #
 # Principio innegociable:
@@ -957,12 +957,17 @@ else
       echo "[DRY-RUN] omarchy refresh herdr"
     fi
   else
+    herdr_rc=0
     if [[ $EUID -eq 0 && -n "${SUDO_USER:-}" ]]; then
-      sudo -u "$SUDO_USER" omarchy refresh herdr 2>/dev/null || true
+      sudo -u "$SUDO_USER" omarchy refresh herdr || herdr_rc=$?
     else
-      omarchy refresh herdr 2>/dev/null || true
+      omarchy refresh herdr || herdr_rc=$?
     fi
-    log_ok "[✓] ya los espacios de Herdr fueron actualizados."
+    if [[ $herdr_rc -eq 0 ]]; then
+      log_ok "[✓] ya los espacios de Herdr fueron actualizados."
+    else
+      log_err "omarchy refresh herdr falló (código $herdr_rc); se continúa sin marcarlo como actualizado. Revisá Herdr o la sesión gráfica."
+    fi
   fi
 fi
 

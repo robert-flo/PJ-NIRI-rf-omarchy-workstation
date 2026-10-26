@@ -18,7 +18,7 @@ date: 2026-10-26
 > **Navegación y Metadatos:**
 > * **Estado:** Aceptado (Vigente).
 > * **Fecha:** 2026-10-26.
-> * **Decisores:** Roberto Flores, Antigravity Agent.
+> * **Decisor:** Roberto Flores.
 > * **Tickets relacionados:** #17 (Una sola fuente de binarios), #18-#20 (Empaquetado formal), #23 (Meta-workspace `/z/pj-omarchy`), #24 (Onboarding convergente), #25 (Consolidación y ADR).
 > * **Vault de Referencia:** [[00.0 - Mapa General del Sistema (MOC)|Mapa General del Sistema (MOC)]] y [[01.9 - Onboarding del Sistema y Repositorio Personal (Modo Padre DEV vs Hija)|01.9 Onboarding de Máquinas]].
 
@@ -73,7 +73,7 @@ Por decisión expresa de Roberto, se valida una única excepción a la regla gen
 
 * `/etc/pacman.conf` pertenece al fork de Omarchy y es actualizado por `omarchy refresh pacman`. Workstation **no debe poseer ni sobreescribir este archivo**.
 * El repositorio personal `[omarchy-personal]` se inyecta de forma limpia y desacoplada mediante un archivo drop-in en `/etc/pacman.d/omarchy-personal.conf`.
-* En equipos con rol PADRE (DEV), la directiva `IgnorePkg = omarchy-dev omarchy-settings-dev` se gestiona mediante el hook del fork `pre-refresh-pacman`.
+* En equipos con rol PADRE (DEV), la directiva `IgnorePkg = omarchy-dev omarchy-settings-dev` se gestiona hoy mediante el hook temporal de workstation (no el del fork), hasta que el fork lo asuma de forma nativa en [robert-flo/omarchy#82](https://github.com/robert-flo/omarchy/issues/82).
 * La inclusión de la directiva `Include = /etc/pacman.d/omarchy-personal.conf` dentro de `/etc/pacman.conf` que ejecuta transitoriamente workstation es una medida temporal hasta que se complete la integración nativa en [robert-flo/omarchy#82](https://github.com/robert-flo/omarchy/issues/82).
 * El archivo espejo huérfano `assets/system/etc/pacman.conf` queda **eliminado definitivamente** de este vault.
 
@@ -82,7 +82,7 @@ Por decisión expresa de Roberto, se valida una única excepción a la regla gen
 * **Fuente única autoritativa:** El único origen del asistente de onboarding es `scripts/omarchy-onboarding/onboard-machine.sh`. Se elimina la copia huérfana en `assets/system/usr/local/bin/omarchy-onboard`.
 * **Empaquetado diferido:** El empaquetado formal del script para ser instalado bajo `/usr/local/bin/` mediante pacman queda delegado a los tickets #18-#20.
 * **Cero escrituras descontroladas:** Fuera de pacman, el onboarding no realiza ninguna nueva escritura sobre `/`, limitándose exclusivamente a las operaciones operativas preexistentes:
-  1. Configuración del sistema de git: `git config --system --add safe.directory ...`
+  1. Configuración del sistema de git: `safe.directory` en `git config --system`: se comprueba con `--get-all` y solo se añade la entrada si falta; si hay duplicados, se deduplica (`--unset-all` y se vuelven a añadir las entradas únicas). Así una segunda corrida no cambia nada.
   2. Ajuste de permisos SGID `2775`, grupo `wheel` y ACLs por defecto bajo `/z/`.
   3. Creación de los enlaces simbólicos de retrocompatibilidad en `/z/`.
 * **Convergencia absoluta:** El onboarding es rigurosamente idempotente: ejecutarlo dos veces consecutivas en la misma máquina no altera nada la segunda vez, convergiendo siempre al mismo estado deseado sin efectos secundarios.
