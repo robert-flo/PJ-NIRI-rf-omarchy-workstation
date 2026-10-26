@@ -45,7 +45,9 @@ EXTRA_USERS=()
 CLEANUP_FILES=()
 
 # Identificar usuario invocador (no-root) y su $HOME
-if [[ -n "${SUDO_USER:-}" ]]; then
+if [[ $EUID -ne 0 ]]; then
+  INVOKING_USER="$(id -un)"
+elif [[ -n "${SUDO_USER:-}" && "$SUDO_USER" != "root" ]]; then
   INVOKING_USER="$SUDO_USER"
 else
   INVOKING_USER="$(id -un)"
@@ -225,7 +227,7 @@ if [[ -f "$DEV_FLAG" ]]; then
 fi
 
 if ! cmp -s "$TMP_FILE" "$PACMAN_CONF"; then
-  if [[ $EUID -ne 0 ]]; then
+  if [[ $EUID -ne 0 && ! -w "$PACMAN_CONF" ]]; then
     sudo install -m 644 "$TMP_FILE" "$PACMAN_CONF"
   else
     install -m 644 "$TMP_FILE" "$PACMAN_CONF"
@@ -554,7 +556,7 @@ if [[ "$DRY_RUN" == true ]]; then
 
   if ! cmp -s "$PACMAN_CONF" "$TMP_PC"; then
     log_change "[CAMBIO] pacman.conf se modificaría según el hook pre-refresh:"
-    diff -u "$PACMAN_CONF" "$TMP_PC" || true
+    diff -u --label "$PACMAN_CONF" --label "$TMP_PC" "$PACMAN_CONF" "$TMP_PC" || true
     CHANGES=$((CHANGES + 1))
     PACMAN_CONFIG_CHANGED=true
   else
@@ -617,7 +619,7 @@ if [[ "$ROLE" == "padre" ]]; then
 
   # 2.3 Alineación e inicialización de repositorios hijos
   log_info "Alineando repositorios hijos en $WORKSPACE_DIR..."
-  if [[ "$is_fresh_clone" == true && -x "$WORKSPACE_DIR/pj" ]]; then
+  if [[ "$is_fresh_clone" == true && ("$DRY_RUN" == true || -x "$WORKSPACE_DIR/pj") ]]; then
     log_change "[CAMBIO] Inicializando ecosistema pj en clon nuevo mediante './pj listo'..."
     CHANGES=$((CHANGES + 1))
     if [[ $EUID -eq 0 && -n "${SUDO_USER:-}" ]]; then
@@ -695,8 +697,12 @@ if [[ "$ROLE" == "padre" ]]; then
         run bash -c "cd '$WORKSPACE_DIR' && ./clone-repos.sh"
       fi
     else
-      log_err "No se encontró ni proyecto.yml ni clone-repos.sh en $WORKSPACE_DIR."
-      exit 1
+      if [[ "$DRY_RUN" == true ]]; then
+        log_info "[DRY-RUN] Repositorios hijos no disponibles en simulación (no se encontraron ni proyecto.yml ni clone-repos.sh en $WORKSPACE_DIR)."
+      else
+        log_err "No se encontró ni proyecto.yml ni clone-repos.sh en $WORKSPACE_DIR."
+        exit 1
+      fi
     fi
 
     # 2.4 Generar workspace multi-root JSON en $WORKSPACE_DIR/pj-omarchy.code-workspace
@@ -797,7 +803,7 @@ if [[ "$ROLE" == "padre" ]]; then
   fi
 
   # 2.7 safe.directory en git config --system
-  mapfile -t CURRENT_SAFE < <(git config --system --get-all safe.directory 2>/dev/null || true)
+  mapfile -t CURRENT_SAFE < <(git -C / config --system --get-all safe.directory 2>/dev/null || true)
   has_dups=false
   declare -A seen_safe=()
   for entry in "${CURRENT_SAFE[@]}"; do
@@ -811,12 +817,12 @@ if [[ "$ROLE" == "padre" ]]; then
   if [[ "$has_dups" == true ]]; then
     log_change "[CAMBIO] Deduplicando entradas en git config --system safe.directory..."
     CHANGES=$((CHANGES + 1))
-    run git config --system --unset-all safe.directory
+    run git -C / config --system --unset-all safe.directory
     declare -A seen_rewritten=()
     for entry in "${CURRENT_SAFE[@]}"; do
       if [[ -z "${seen_rewritten["$entry"]:-}" ]]; then
         seen_rewritten["$entry"]=1
-        run git config --system --add safe.directory "$entry"
+        run git -C / config --system --add safe.directory "$entry"
       fi
     done
   else
@@ -824,12 +830,12 @@ if [[ "$ROLE" == "padre" ]]; then
   fi
 
   for req_dir in "$WORKSPACE_DIR" "$WORKSPACE_DIR/*"; do
-    if git config --system --get-all safe.directory 2>/dev/null | grep -qxF "$req_dir"; then
+    if git -C / config --system --get-all safe.directory 2>/dev/null | grep -qxF "$req_dir"; then
       log_ok "[✓] ya git config --system safe.directory contiene '$req_dir'."
     else
       log_change "[CAMBIO] Añadiendo '$req_dir' a git config --system safe.directory..."
       CHANGES=$((CHANGES + 1))
-      run git config --system --add safe.directory "$req_dir"
+      run git -C / config --system --add safe.directory "$req_dir"
     fi
   done
 
@@ -876,11 +882,19 @@ if [[ "$ROLE" == "padre" ]]; then
   # 2.9 Activar Modo Live con omarchy dev link (fatal si falla)
   log_info "Verificando Modo Live hacia $DEV_DIR..."
   if ! command -v omarchy >/dev/null 2>&1; then
-    log_err "Comando 'omarchy' no encontrado en PATH. En modo PADRE 'omarchy dev link' es obligatorio."
-    exit 1
-  fi
-
-  if grep -qE "OMARCHY_PATH=[\"']?${DEV_DIR}[\"']?" /etc/omarchy.conf 2>/dev/null; then
+    if [[ "$DRY_RUN" == true ]]; then
+      log_change "[CAMBIO] Activando Modo Live apuntando a $DEV_DIR..."
+      CHANGES=$((CHANGES + 1))
+      if [[ $EUID -eq 0 && -n "${SUDO_USER:-}" ]]; then
+        echo "[DRY-RUN] sudo -u $SUDO_USER omarchy dev link $DEV_DIR"
+      else
+        echo "[DRY-RUN] omarchy dev link $DEV_DIR"
+      fi
+    else
+      log_err "Comando 'omarchy' no encontrado en PATH. En modo PADRE 'omarchy dev link' es obligatorio."
+      exit 1
+    fi
+  elif grep -qE "OMARCHY_PATH=[\"']?${DEV_DIR}[\"']?" /etc/omarchy.conf 2>/dev/null; then
     log_ok "[✓] ya Modo Live de desarrollo apunta a $DEV_DIR."
   else
     log_change "[CAMBIO] Activando Modo Live apuntando a $DEV_DIR..."

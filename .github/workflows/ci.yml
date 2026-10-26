@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+
+jobs:
+  shellcheck:
+    name: ShellCheck
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout del repositorio
+        uses: actions/checkout@v4
+      - name: Ejecutar ShellCheck
+        run: |
+          shellcheck scripts/omarchy-onboarding/onboard-machine.sh
+          shellcheck scripts/omarchy-onboarding/ci-idempotencia.sh
+
+  vault:
+    name: Validación del Vault
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout del repositorio
+        uses: actions/checkout@v4
+      - name: Configurar Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Validar integridad del Vault
+        run: python3 scripts/validate_vault.py
+
+  onboarding-idempotencia:
+    name: Idempotencia de Onboarding
+    runs-on: ubuntu-latest
+    container:
+      image: archlinux:latest
+    steps:
+      - name: Instalar dependencias en contenedor
+        run: pacman -Sy --noconfirm git acl sudo gnupg diffutils
+      - name: Checkout del repositorio
+        uses: actions/checkout@v4
+      - name: Ejecutar validación de idempotencia
+        run: bash scripts/omarchy-onboarding/ci-idempotencia.sh
