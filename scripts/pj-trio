@@ -167,6 +167,10 @@ verificar_agentes_disponibles() {
 
     if [[ "$necesita_agy" -eq 1 ]]; then
         if ! command -v agy >/dev/null 2>&1; then
+            if [[ "$dry_run" -eq 1 ]]; then
+                echo "[dry-run] Aviso: 'agy' no está en el PATH; se omite la verificación de agentes." >&2
+                return 0
+            fi
             echo "Error: el comando 'agy' no está disponible en el PATH." >&2
             exit 1
         fi
@@ -184,7 +188,7 @@ verificar_agentes_disponibles() {
                 if ! echo "$available_agents" | grep -Fxq "$expected"; then
                     echo "Error: el agente '$expected' no está disponible en 'agy agents'." >&2
                     echo "Asegurate de que el agente esté registrado en ~/.gemini/config/agents/." >&2
-                    exit 1
+                    [[ "$dry_run" -eq 1 ]] || exit 1
                 fi
             fi
         done
@@ -446,8 +450,9 @@ iniciar_agente_rol() {
 
     local live_agents
     live_agents="$(herdr agent list 2>/dev/null || true)"
-    if echo "$live_agents" | jq -e --arg p "$pane_id" --arg n "$agent_name" \
-        '.result.agents[]? | select(.pane_id == $p or .name == $n)' >/dev/null 2>&1; then
+    # Solo por pane: el nombre (pm-<ticket>) puede repetirse en otro proyecto con el mismo ticket.
+    if echo "$live_agents" | jq -e --arg p "$pane_id" \
+        '.result.agents[]? | select(.pane_id == $p)' >/dev/null 2>&1; then
         return 0
     fi
 
