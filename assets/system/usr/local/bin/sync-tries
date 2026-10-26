@@ -52,7 +52,7 @@ Opciones de sincronización:
   -h, --help           Muestra esta ayuda.
 
 Seguridad integrada:
-  - Escudo Anti-Borrado: Si se detecta borrado masivo (> $MAX_DELETIONS_ABS archivos o > $MAX_DELETIONS_PCT%), se aborta.
+  - Escudo de Carpeta Vacía: Si se detecta origen vacío (0 archivos), se aborta para proteger la nube.
   - Snapshots Btrfs: Historial CoW de los últimos $MAX_SNAPSHOTS respaldos (espacio extra inicial: 0 bytes).
   - Concurrencia (flock): Evita colisiones o ejecuciones simultáneas.
   - Tolerancia a desconexión: Continúa a la nube si el disco externo no está montado.
@@ -363,25 +363,7 @@ if [[ "$MODE" == "sync" && "$FORCE_DELETE" == false ]]; then
             cat "$TMP_DEL_LIST"
         } > "$DELETIONS_LOG"
 
-        log "Verificación de borrado: $PENDING_DELETIONS archivo(s) pendientes de eliminación."
-        ABORT_DELETE=false
-
-        if [[ $PENDING_DELETIONS -gt $MAX_DELETIONS_ABS ]]; then
-            ABORT_DELETE=true
-        elif [[ $TOTAL_LOCAL_FILES -gt 5 ]]; then
-            PCT=$(( (PENDING_DELETIONS * 100) / (TOTAL_LOCAL_FILES + PENDING_DELETIONS) ))
-            if [[ $PCT -gt $MAX_DELETIONS_PCT ]]; then
-                ABORT_DELETE=true
-            fi
-        fi
-
-        if [[ "$ABORT_DELETE" == true ]]; then
-            ALERT_MSG="ALERTA: Se detectó borrado masivo inusual ($PENDING_DELETIONS archivos). Sincronización detenida por seguridad."
-            log "SEGURIDAD: $ALERT_MSG"
-            notify "🛡️ Escudo sync-tries activado" "$ALERT_MSG" "critical"
-            rm -f "$TMP_DEL_LIST"
-            exit 2
-        fi
+        log "Verificación de borrado: $PENDING_DELETIONS archivo(s) detectados para remoción (modo desarrollo sin bloqueo artificial)."
     fi
     rm -f "$TMP_DEL_LIST"
 fi
