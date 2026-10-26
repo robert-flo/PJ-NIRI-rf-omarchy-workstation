@@ -38,7 +38,9 @@ Copias **exactas** de los archivos fuera de `$HOME` que gestiona esta arquitectu
 | `assets/system/etc/modprobe.d/i915.conf` | `/etc/modprobe.d/` | `0644` | [[01.2 - Hardware y Graficos (Fix Parpadeo Intel i915)\|01.2]] |
 | `assets/system/etc/environment.d/10-android.conf` | `/etc/environment.d/` | `0644` | [[03.5 - Ecosistema Google Antigravity y Android Studio Canary (BYOA)\|03.5]] |
 | `assets/system/etc/pacman.conf` | `/etc/pacman.conf` | `0644` | [[03.6 - Ecosistema Omarchy Personal Fork y Portal fork-docs\|03.6]] |
+| `assets/system/etc/omarchy.conf` | `/etc/omarchy.conf` | `0644` | [[01.9 - Onboarding del Sistema y Repositorio Personal (Modo Padre DEV vs Hija)\|01.9]] |
 | `assets/system/usr/local/bin/fork-docs` | `/usr/local/bin/` | `0755` | [[03.6 - Ecosistema Omarchy Personal Fork y Portal fork-docs\|03.6]] |
+| `assets/system/usr/local/bin/omarchy-onboard` | `/usr/local/bin/` | `0755` | [[01.9 - Onboarding del Sistema y Repositorio Personal (Modo Padre DEV vs Hija)\|01.9]] |
 | `assets/system/etc/fish/conf.d/android.fish` | `/etc/fish/conf.d/` | `0644` | [[03.5 - Ecosistema Google Antigravity y Android Studio Canary (BYOA)\|03.5]] |
 | `assets/system/etc/profile.d/android.sh` | `/etc/profile.d/` | `0755` | [[03.5 - Ecosistema Google Antigravity y Android Studio Canary (BYOA)\|03.5]] |
 | `assets/system/usr/local/bin/google-chrome` | `/usr/local/bin/` | `0755` | [[03.5 - Ecosistema Google Antigravity y Android Studio Canary (BYOA)\|03.5]] |
