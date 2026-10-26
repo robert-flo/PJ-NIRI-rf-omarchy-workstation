@@ -1,3 +1,17 @@
+---
+title: "Piloto Home: ravn-home-common (#42)"
+tags:
+  - piloto-home
+  - common
+  - bash
+  - fish
+  - pacman
+aliases:
+  - 42-ravn-home-common
+  - Capa ravn-home-common
+date: 2026-10-26
+---
+
 # 42 - ravn-home-common mínimo
 
 Documento de registro para el sub-issue [#42](https://github.com/robert-flo/PJ-NIRI-rf-omarchy-workstation/issues/42), parte del spec [#40](https://github.com/robert-flo/PJ-NIRI-rf-omarchy-workstation/issues/40) (piloto `$HOME` por capas en `niri-test`).
