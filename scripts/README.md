@@ -4,7 +4,7 @@ Este directorio contiene herramientas y utilidades operativas de la estación de
 
 ## `pj-trio`
 
-`pj-trio` es un inicializador idempotente para herdr que prepara un workspace con tres paneles dedicados a los roles del trío: **PM**, **WK** y **RV**.
+`pj-trio` es un inicializador idempotente para herdr que prepara un workspace con tres tabs dedicados a los roles del trío: **PM**, **WK** y **RV**.
 
 ### Uso
 
@@ -16,13 +16,17 @@ pj-trio [--dry-run] <repo> <ticket>
 - `<ticket>`: Identificador del issue o ticket a trabajar (por ejemplo `18` o `59`).
 - `--dry-run`: Muestra los comandos que se ejecutarían sin aplicarlos.
 
-### Disposición de paneles (Topología)
+### Disposición de tabs (Topología)
 
-El comando configura el directorio raíz del repositorio como `cwd` para todos los paneles y genera la siguiente estructura:
+El comando configura el directorio raíz del repositorio como `cwd` para todos los tabs y paneles, generando un tab individual a pantalla completa para cada rol (sin divisiones de pantalla):
 
-- **PM-<ticket>** (izquierda): Panel raíz para la coordinación y gestión del ticket.
-- **WK-<ticket>** (superior derecha): Panel para la implementación de cambios.
-- **RV-<ticket>** (inferior derecha): Panel para la revisión y validación de entregas.
+- **Tab 'pm'**: contiene el panel **PM-<ticket>** para la coordinación y gestión del ticket.
+- **Tab 'wk'**: contiene el panel **WK-<ticket>** para la implementación de cambios.
+- **Tab 'rv'**: contiene el panel **RV-<ticket>** para la revisión y validación de entregas.
+
+### Integración de agentes
+
+Antes de arrancar los agentes, `pj-trio` verifica de forma idempotente el estado de integración en herdr mediante `herdr integration status`. Si la integración correspondiente al kind configurado no está instalada, ejecuta la instalación respectiva (por ejemplo `herdr integration install antigravity-cli`) para que el seguimiento de estado del agente opere correctamente.
 
 ### Configuración de Kinds por Rol
 
@@ -32,7 +36,7 @@ El agente a iniciar en cada rol se define mediante variables en un archivo de co
 - `WK_KIND`: Kind del agente para el rol WK.
 - `RV_KIND`: Kind del agente para el rol RV.
 
-Si dejás un valor vacío (`""`), el panel correspondiente queda en un shell interactivo para que arranques el proceso manualmente.
+Si dejás un valor vacío (`""`), el tab correspondiente queda en un shell interactivo para que arranques el proceso manualmente.
 
 El archivo de configuración se busca en el siguiente orden de precedencia:
 
@@ -43,4 +47,4 @@ El archivo de configuración se busca en el siguiente orden de precedencia:
 
 ### Idempotencia
 
-Si ejecutás `pj-trio` una segunda vez sobre el mismo `<repo>` y `<ticket>`, detectará el workspace existente por su etiqueta (`trio <repo>#<ticket>`), reutilizará los paneles ya creados y no duplicará procesos ni splits.
+Si ejecutás `pj-trio` una segunda vez sobre el mismo `<repo>` y `<ticket>`, detectará el workspace existente por su etiqueta (`trio <repo>#<ticket>`), reutilizará los tabs y paneles ya creados y no duplicará tabs, paneles ni procesos.

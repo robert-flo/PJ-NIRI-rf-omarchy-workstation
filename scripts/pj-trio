@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# pj-trio — Inicializador idempotente de paneles herdr para el trío (PM, WK, RV)
+# pj-trio — Inicializador idempotente de tabs herdr para el trío (PM, WK, RV)
 #
 # Uso: pj-trio [--dry-run] <repo> <ticket>
 #
-# Crea o reutiliza un workspace en herdr con tres paneles:
-# - PM-<ticket> (panel raíz, izquierda)
-# - WK-<ticket> (panel superior derecho)
-# - RV-<ticket> (panel inferior derecho)
+# Crea o reutiliza un workspace en herdr con tres tabs independientes a pantalla completa:
+# - Tab 'pm': panel PM-<ticket> (coordinación)
+# - Tab 'wk': panel WK-<ticket> (implementación)
+# - Tab 'rv': panel RV-<ticket> (revisión)
 #
-# En cada panel arranca el agente configurado para el rol correspondiente.
+# En cada tab arranca el agente configurado para el rol correspondiente.
 # Si el kind está vacío, deja un shell interactivo para inicio manual.
 
 mostrar_uso() {
@@ -25,6 +25,52 @@ Opciones:
   --dry-run    Muestra los comandos sin ejecutarlos.
   -h, --help   Muestra esta ayuda.
 EOF
+}
+
+derivar_target_integracion() {
+    local kind="$1"
+    case "$kind" in
+        agy|antigravity-cli)
+            echo "antigravity-cli"
+            ;;
+        *)
+            echo "$kind"
+            ;;
+    esac
+}
+
+asegurar_integracion() {
+    local kind="$1"
+    [[ -z "$kind" ]] && return 0
+
+    local target
+    target="$(derivar_target_integracion "$kind")"
+
+    local status_output
+    if ! status_output="$(herdr integration status 2>/dev/null)"; then
+        return 0
+    fi
+
+    if echo "$status_output" | grep -qE "^${target}:[[:space:]]+not installed"; then
+        if ! herdr integration install "$target" >/dev/null 2>&1; then
+            echo "Aviso: no se pudo instalar la integración de herdr para '${target}'." >&2
+        fi
+    fi
+}
+
+asegurar_integraciones() {
+    local kinds=("$@")
+    local vistos=" "
+    for k in "${kinds[@]}"; do
+        [[ -z "$k" ]] && continue
+        local target
+        target="$(derivar_target_integracion "$k")"
+        if [[ "$vistos" =~ [[:space:]]"$target"[[:space:]] ]]; then
+            continue
+        fi
+        vistos="${vistos}${target} "
+        asegurar_integracion "$k"
+    done
 }
 
 # 1. Parseo de argumentos
@@ -114,41 +160,56 @@ if [[ "$dry_run" -eq 1 ]]; then
     echo "[dry-run] Archivo de configuración: $config_file"
     echo "[dry-run] Kinds: PM='${PM_KIND}' WK='${WK_KIND}' RV='${RV_KIND}'"
     echo ""
+    echo "[dry-run] Integración herdr:"
+    vistos_dry=" "
+    for k in "$PM_KIND" "$WK_KIND" "$RV_KIND"; do
+        [[ -z "$k" ]] && continue
+        t="$(derivar_target_integracion "$k")"
+        if [[ "$vistos_dry" =~ [[:space:]]"$t"[[:space:]] ]]; then
+            continue
+        fi
+        vistos_dry="${vistos_dry}${t} "
+        echo "[dry-run] herdr integration status"
+        echo "[dry-run] # Si no está instalada la integración para '${t}': herdr integration install \"${t}\""
+    done
+    echo ""
     echo "[dry-run] herdr workspace create --cwd \"$repo_root\" --label \"$ws_label\" --no-focus"
-    echo "[dry-run] herdr pane rename \"<id_pm>\" \"PM-${ticket}\""
-    echo "[dry-run] herdr pane split \"<id_pm>\" --direction right --no-focus --cwd \"$repo_root\""
-    echo "[dry-run] herdr pane rename \"<id_wk>\" \"WK-${ticket}\""
-    echo "[dry-run] herdr pane split \"<id_wk>\" --direction down --no-focus --cwd \"$repo_root\""
-    echo "[dry-run] herdr pane rename \"<id_rv>\" \"RV-${ticket}\""
-    
+    echo "[dry-run] herdr tab rename \"<id_pm_tab>\" \"pm\""
+    echo "[dry-run] herdr pane rename \"<id_pm_pane>\" \"PM-${ticket}\""
+    echo "[dry-run] herdr tab create --workspace \"<id_ws>\" --cwd \"$repo_root\" --label \"wk\" --no-focus"
+    echo "[dry-run] herdr pane rename \"<id_wk_pane>\" \"WK-${ticket}\""
+    echo "[dry-run] herdr tab create --workspace \"<id_ws>\" --cwd \"$repo_root\" --label \"rv\" --no-focus"
+    echo "[dry-run] herdr pane rename \"<id_rv_pane>\" \"RV-${ticket}\""
+    echo ""
+
     agent_pm=$(echo "pm-${ticket}" | tr '[:upper:]' '[:lower:]')
     agent_wk=$(echo "wk-${ticket}" | tr '[:upper:]' '[:lower:]')
     agent_rv=$(echo "rv-${ticket}" | tr '[:upper:]' '[:lower:]')
 
     if [[ -n "$PM_KIND" ]]; then
-        echo "[dry-run] herdr agent start \"$agent_pm\" --kind \"$PM_KIND\" --pane \"<id_pm>\""
+        echo "[dry-run] herdr agent start \"$agent_pm\" --kind \"$PM_KIND\" --pane \"<id_pm_pane>\""
     else
-        echo "[dry-run] # PM_KIND vacío: se deja el shell en panel PM"
+        echo "[dry-run] # PM_KIND vacío: se deja el shell en tab pm"
     fi
 
     if [[ -n "$WK_KIND" ]]; then
-        echo "[dry-run] herdr agent start \"$agent_wk\" --kind \"$WK_KIND\" --pane \"<id_wk>\""
+        echo "[dry-run] herdr agent start \"$agent_wk\" --kind \"$WK_KIND\" --pane \"<id_wk_pane>\""
     else
-        echo "[dry-run] # WK_KIND vacío: se deja el shell en panel WK"
+        echo "[dry-run] # WK_KIND vacío: se deja el shell en tab wk"
     fi
 
     if [[ -n "$RV_KIND" ]]; then
-        echo "[dry-run] herdr agent start \"$agent_rv\" --kind \"$RV_KIND\" --pane \"<id_rv>\""
+        echo "[dry-run] herdr agent start \"$agent_rv\" --kind \"$RV_KIND\" --pane \"<id_rv_pane>\""
     else
-        echo "[dry-run] # RV_KIND vacío: se deja el shell en panel RV"
+        echo "[dry-run] # RV_KIND vacío: se deja el shell en tab rv"
     fi
 
     echo ""
     echo "Workspace ID: <simulado> ($ws_label)"
-    echo "Paneles y roles:"
-    echo "  - PM-${ticket} ($agent_pm) en <id_pm>"
-    echo "  - WK-${ticket} ($agent_wk) en <id_wk>"
-    echo "  - RV-${ticket} ($agent_rv) en <id_rv>"
+    echo "Tabs y roles:"
+    echo "  - Tab 'pm': PM-${ticket} ($agent_pm) en <id_pm_pane>"
+    echo "  - Tab 'wk': WK-${ticket} ($agent_wk) en <id_wk_pane>"
+    echo "  - Tab 'rv': RV-${ticket} ($agent_rv) en <id_rv_pane>"
     echo "Comando para adjuntarte:"
     echo "  herdr workspace focus <simulado> && herdr"
     exit 0
@@ -167,38 +228,63 @@ if ! ws_list_json="$(herdr workspace list 2>&1)"; then
     exit 1
 fi
 
-# 6. Creación o reutilización del workspace (idempotente)
+# 6. Creación o reutilización del workspace y tabs (idempotente)
 existing_ws_id="$(echo "$ws_list_json" | jq -r --arg label "$ws_label" '.result.workspaces[]? | select(.label == $label) | .workspace_id' | head -n 1)"
 
 ws_id=""
+pm_tab=""
+wk_tab=""
+rv_tab=""
 pm_pane=""
 wk_pane=""
 rv_pane=""
 
 if [[ -n "$existing_ws_id" ]]; then
     ws_id="$existing_ws_id"
-    panes_json="$(herdr pane list --workspace "$ws_id")"
-    
-    pm_pane="$(echo "$panes_json" | jq -r --arg l "PM-${ticket}" '.result.panes[]? | select(.label == $l) | .pane_id' | head -n 1)"
-    wk_pane="$(echo "$panes_json" | jq -r --arg l "WK-${ticket}" '.result.panes[]? | select(.label == $l) | .pane_id' | head -n 1)"
-    rv_pane="$(echo "$panes_json" | jq -r --arg l "RV-${ticket}" '.result.panes[]? | select(.label == $l) | .pane_id' | head -n 1)"
+    tabs_json="$(herdr tab list --workspace "$ws_id")"
 
-    # Si faltan paneles pero existe al menos un panel raíz, completamos la topología
-    if [[ -z "$pm_pane" || -z "$wk_pane" || -z "$rv_pane" ]]; then
-        pane_count="$(echo "$panes_json" | jq '.result.panes | length')"
-        if [[ "$pane_count" -eq 1 ]]; then
-            pm_pane="$(echo "$panes_json" | jq -r '.result.panes[0].pane_id')"
-            herdr pane rename "$pm_pane" "PM-${ticket}" >/dev/null
-            
-            split_wk="$(herdr pane split "$pm_pane" --direction right --no-focus --cwd "$repo_root")"
-            wk_pane="$(echo "$split_wk" | jq -r '.result.pane.pane_id')"
-            herdr pane rename "$wk_pane" "WK-${ticket}" >/dev/null
-            
-            split_rv="$(herdr pane split "$wk_pane" --direction down --no-focus --cwd "$repo_root")"
-            rv_pane="$(echo "$split_rv" | jq -r '.result.pane.pane_id')"
-            herdr pane rename "$rv_pane" "RV-${ticket}" >/dev/null
+    pm_tab="$(echo "$tabs_json" | jq -r '.result.tabs[]? | select(.label == "pm") | .tab_id' | head -n 1)"
+    wk_tab="$(echo "$tabs_json" | jq -r '.result.tabs[]? | select(.label == "wk") | .tab_id' | head -n 1)"
+    rv_tab="$(echo "$tabs_json" | jq -r '.result.tabs[]? | select(.label == "rv") | .tab_id' | head -n 1)"
+
+    if [[ -z "$pm_tab" ]]; then
+        first_tab="$(echo "$tabs_json" | jq -r '.result.tabs[0]?.tab_id // empty')"
+        if [[ -n "$first_tab" ]]; then
+            pm_tab="$first_tab"
+            herdr tab rename "$pm_tab" "pm" >/dev/null
+        else
+            pm_tab_json="$(herdr tab create --workspace "$ws_id" --cwd "$repo_root" --label "pm" --no-focus)"
+            pm_tab="$(echo "$pm_tab_json" | jq -r '.result.tab.tab_id')"
+            pm_pane="$(echo "$pm_tab_json" | jq -r '.result.root_pane.pane_id')"
         fi
     fi
+
+    if [[ -z "$wk_tab" ]]; then
+        wk_tab_json="$(herdr tab create --workspace "$ws_id" --cwd "$repo_root" --label "wk" --no-focus)"
+        wk_tab="$(echo "$wk_tab_json" | jq -r '.result.tab.tab_id')"
+        wk_pane="$(echo "$wk_tab_json" | jq -r '.result.root_pane.pane_id')"
+    fi
+
+    if [[ -z "$rv_tab" ]]; then
+        rv_tab_json="$(herdr tab create --workspace "$ws_id" --cwd "$repo_root" --label "rv" --no-focus)"
+        rv_tab="$(echo "$rv_tab_json" | jq -r '.result.tab.tab_id')"
+        rv_pane="$(echo "$rv_tab_json" | jq -r '.result.root_pane.pane_id')"
+    fi
+
+    panes_json="$(herdr pane list --workspace "$ws_id")"
+    if [[ -z "$pm_pane" ]]; then
+        pm_pane="$(echo "$panes_json" | jq -r --arg t "$pm_tab" '.result.panes[]? | select(.tab_id == $t) | .pane_id' | head -n 1)"
+    fi
+    if [[ -z "$wk_pane" ]]; then
+        wk_pane="$(echo "$panes_json" | jq -r --arg t "$wk_tab" '.result.panes[]? | select(.tab_id == $t) | .pane_id' | head -n 1)"
+    fi
+    if [[ -z "$rv_pane" ]]; then
+        rv_pane="$(echo "$panes_json" | jq -r --arg t "$rv_tab" '.result.panes[]? | select(.tab_id == $t) | .pane_id' | head -n 1)"
+    fi
+
+    [[ -n "$pm_pane" ]] && herdr pane rename "$pm_pane" "PM-${ticket}" >/dev/null
+    [[ -n "$wk_pane" ]] && herdr pane rename "$wk_pane" "WK-${ticket}" >/dev/null
+    [[ -n "$rv_pane" ]] && herdr pane rename "$rv_pane" "RV-${ticket}" >/dev/null
 else
     create_json="$(herdr workspace create --cwd "$repo_root" --label "$ws_label" --no-focus)"
     if echo "$create_json" | jq -e '.error' >/dev/null 2>&1; then
@@ -208,36 +294,43 @@ else
     fi
 
     ws_id="$(echo "$create_json" | jq -r '.result.workspace.workspace_id')"
+    pm_tab="$(echo "$create_json" | jq -r '.result.tab.tab_id // .result.workspace.active_tab_id')"
     pm_pane="$(echo "$create_json" | jq -r '.result.root_pane.pane_id')"
+
+    herdr tab rename "$pm_tab" "pm" >/dev/null
     herdr pane rename "$pm_pane" "PM-${ticket}" >/dev/null
 
-    split_wk="$(herdr pane split "$pm_pane" --direction right --no-focus --cwd "$repo_root")"
-    if echo "$split_wk" | jq -e '.error' >/dev/null 2>&1; then
-        err_msg="$(echo "$split_wk" | jq -r '.error.message // .error.code')"
-        echo "Error al dividir el panel para WK: $err_msg" >&2
+    wk_tab_json="$(herdr tab create --workspace "$ws_id" --cwd "$repo_root" --label "wk" --no-focus)"
+    if echo "$wk_tab_json" | jq -e '.error' >/dev/null 2>&1; then
+        err_msg="$(echo "$wk_tab_json" | jq -r '.error.message // .error.code')"
+        echo "Error al crear el tab para WK en herdr: $err_msg" >&2
         exit 1
     fi
-    wk_pane="$(echo "$split_wk" | jq -r '.result.pane.pane_id')"
+    wk_tab="$(echo "$wk_tab_json" | jq -r '.result.tab.tab_id')"
+    wk_pane="$(echo "$wk_tab_json" | jq -r '.result.root_pane.pane_id')"
     herdr pane rename "$wk_pane" "WK-${ticket}" >/dev/null
 
-    split_rv="$(herdr pane split "$wk_pane" --direction down --no-focus --cwd "$repo_root")"
-    if echo "$split_rv" | jq -e '.error' >/dev/null 2>&1; then
-        err_msg="$(echo "$split_rv" | jq -r '.error.message // .error.code')"
-        echo "Error al dividir el panel para RV: $err_msg" >&2
+    rv_tab_json="$(herdr tab create --workspace "$ws_id" --cwd "$repo_root" --label "rv" --no-focus)"
+    if echo "$rv_tab_json" | jq -e '.error' >/dev/null 2>&1; then
+        err_msg="$(echo "$rv_tab_json" | jq -r '.error.message // .error.code')"
+        echo "Error al crear el tab para RV en herdr: $err_msg" >&2
         exit 1
     fi
-    rv_pane="$(echo "$split_rv" | jq -r '.result.pane.pane_id')"
+    rv_tab="$(echo "$rv_tab_json" | jq -r '.result.tab.tab_id')"
+    rv_pane="$(echo "$rv_tab_json" | jq -r '.result.root_pane.pane_id')"
     herdr pane rename "$rv_pane" "RV-${ticket}" >/dev/null
 fi
 
-# 7. Inicio de agentes por rol
+# 7. Integración y arranque de agentes por rol
+asegurar_integraciones "$PM_KIND" "$WK_KIND" "$RV_KIND"
+
 iniciar_agente_rol() {
     local role="$1"
     local pane_id="$2"
     local kind="$3"
 
-    if [[ -z "$kind" ]]; then
-        # Kind vacío: queda el shell interactivo para inicio manual
+    if [[ -z "$kind" || -z "$pane_id" ]]; then
+        # Kind vacío o pane no disponible: queda el shell interactivo para inicio manual
         return 0
     fi
 
@@ -278,10 +371,10 @@ agent_rv="$(echo "rv-${ticket}" | tr '[:upper:]' '[:lower:]')"
 # 8. Salida final
 cat <<EOF
 Workspace ID: $ws_id ($ws_label)
-Paneles y roles:
-  - PM-${ticket} ($agent_pm) en $pm_pane
-  - WK-${ticket} ($agent_wk) en $wk_pane
-  - RV-${ticket} ($agent_rv) en $rv_pane
+Tabs y roles:
+  - Tab 'pm': PM-${ticket} ($agent_pm) en $pm_pane
+  - Tab 'wk': WK-${ticket} ($agent_wk) en $wk_pane
+  - Tab 'rv': RV-${ticket} ($agent_rv) en $rv_pane
 Comando para adjuntarte:
   herdr workspace focus $ws_id && herdr
 EOF
