@@ -3,12 +3,16 @@ set -euo pipefail
 
 # pj-trio — Inicializador idempotente de tabs en herdr para el trío (PM, WK, RV)
 #
-# Uso: pj-trio [--dry-run] <proyecto> <ticket> [--repo <miembro>]
+# Uso: pj-trio [--dry-run] [--no-kickoff] [--print-kickoff] <proyecto> <ticket> [--repo <miembro>]
 #
 # Crea o reutiliza un workspace en herdr con tres tabs independientes a pantalla completa:
-# - pm: agente PM-<proyecto> (panel PM-<ticket>)
-# - wk: agente WK-<proyecto> (panel WK-<ticket>)
-# - rv: agente RV-<proyecto> (panel RV-<ticket>)
+# - pm: agente PM-<proyecto> (panel PM-<ticket>, nombre herdr pm-<proyecto>)
+# - wk: agente WK-<proyecto> (panel WK-<ticket>, nombre herdr wk-<proyecto>)
+# - rv: agente RV-<proyecto> (panel RV-<ticket>, nombre herdr rv-<proyecto>)
+#
+# Además fija la identidad git del meta-repo y del miembro (TRIO_GIT_NAME/EMAIL)
+# y envía al PM el prompt de arranque (trio-pm-prompt.md) una sola vez por ticket:
+# el marcador es <proyecto>/.trio/<ticket>/status.json.
 #
 # Cwd de los tabs: el directorio del proyecto meta (carpeta pj-).
 # Si se especifica un repositorio miembro (--repo), se añade al espacio de trabajo
@@ -16,7 +20,7 @@ set -euo pipefail
 
 mostrar_uso() {
     cat <<'EOF'
-Uso: pj-trio [--dry-run] <proyecto> <ticket> [--repo <miembro>]
+Uso: pj-trio [--dry-run] [--no-kickoff] [--print-kickoff] <proyecto> <ticket> [--repo <miembro>]
 
 Argumentos:
   <proyecto>        Ruta o nombre del proyecto meta (pj-*).
@@ -28,12 +32,16 @@ Opciones:
   --repo <miembro>  Repositorio miembro del proyecto (hermano, subdirectorio o ruta).
                     Se pasa a cada agente mediante --add-dir.
   --dry-run         Muestra los comandos sin ejecutarlos.
+  --no-kickoff      No envía el prompt de arranque al PM.
+  --print-kickoff   Imprime el prompt de arranque del PM y sale (no toca herdr).
   -h, --help        Muestra esta ayuda.
 EOF
 }
 
 # 1. Parseo de argumentos
 dry_run=0
+kickoff=1
+print_kickoff=0
 repo_arg=""
 positional=()
 
@@ -41,6 +49,14 @@ while [[ $# -gt 0 ]]; do
     case "$1" in
         --dry-run)
             dry_run=1
+            shift
+            ;;
+        --no-kickoff)
+            kickoff=0
+            shift
+            ;;
+        --print-kickoff)
+            print_kickoff=1
             shift
             ;;
         --repo)
@@ -136,6 +152,8 @@ fi
 PM_KIND=""
 WK_KIND=""
 RV_KIND=""
+TRIO_GIT_NAME=""
+TRIO_GIT_EMAIL=""
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 config_file="${PJ_TRIO_CONFIG:-/usr/share/ravn/trio/trio.conf}"
@@ -154,6 +172,98 @@ if [[ -f "$config_file" ]]; then
     # shellcheck source=/dev/null
     source "$config_file"
 fi
+
+# 4b. Nombres de agente por proyecto (no por ticket) y prompt de arranque
+nombre_agente() {
+    echo "${1}-${project_name}" | tr '[:upper:]' '[:lower:]'
+}
+agent_pm="$(nombre_agente pm)"
+agent_wk="$(nombre_agente wk)"
+agent_rv="$(nombre_agente rv)"
+
+trio_dir="${project_dir}/.trio/${ticket}"
+miembro_dir="${repo_path:-$project_dir}"
+
+prompt_template="${PJ_TRIO_PM_PROMPT:-}"
+if [[ -z "$prompt_template" ]]; then
+    for c in /usr/share/ravn/trio/trio-pm-prompt.md "${script_dir}/trio-pm-prompt.md"; do
+        if [[ -f "$c" ]]; then
+            prompt_template="$c"
+            break
+        fi
+    done
+fi
+
+renderizar_kickoff() {
+    if [[ -z "$prompt_template" || ! -f "$prompt_template" ]]; then
+        echo "Error: no se encontró trio-pm-prompt.md (definí PJ_TRIO_PM_PROMPT)." >&2
+        return 1
+    fi
+    local t
+    t="$(cat "$prompt_template")"
+    t="${t//\{\{PROYECTO\}\}/$project_name}"
+    t="${t//\{\{PROYECTO_DIR\}\}/$project_dir}"
+    t="${t//\{\{TICKET\}\}/$ticket}"
+    t="${t//\{\{MIEMBRO_DIR\}\}/$miembro_dir}"
+    t="${t//\{\{TRIO_DIR\}\}/$trio_dir}"
+    t="${t//\{\{AGENTE_PM\}\}/$agent_pm}"
+    t="${t//\{\{AGENTE_WK\}\}/$agent_wk}"
+    t="${t//\{\{AGENTE_RV\}\}/$agent_rv}"
+    printf '%s\n' "$t"
+}
+
+if [[ "$print_kickoff" -eq 1 ]]; then
+    renderizar_kickoff
+    exit $?
+fi
+
+# Identidad git: la fija pj-trio en la config local de cada repo (idempotente).
+fijar_identidad_git() {
+    if [[ -z "$TRIO_GIT_NAME" || -z "$TRIO_GIT_EMAIL" ]]; then
+        echo "Aviso: TRIO_GIT_NAME/TRIO_GIT_EMAIL vacíos en la config; no se fija identidad git." >&2
+        return 0
+    fi
+    local dirs=("$project_dir")
+    [[ -n "$repo_path" ]] && dirs+=("$repo_path")
+    local d
+    for d in "${dirs[@]}"; do
+        git -C "$d" rev-parse --git-dir >/dev/null 2>&1 || continue
+        if [[ "$dry_run" -eq 1 ]]; then
+            echo "[dry-run] git -C \"$d\" config user.name \"$TRIO_GIT_NAME\""
+            echo "[dry-run] git -C \"$d\" config user.email \"$TRIO_GIT_EMAIL\""
+            continue
+        fi
+        [[ "$(git -C "$d" config --local user.name || true)" == "$TRIO_GIT_NAME" ]] || git -C "$d" config user.name "$TRIO_GIT_NAME"
+        [[ "$(git -C "$d" config --local user.email || true)" == "$TRIO_GIT_EMAIL" ]] || git -C "$d" config user.email "$TRIO_GIT_EMAIL"
+    done
+}
+
+# Envío del arranque al PM: una sola vez por ticket (marcador status.json).
+enviar_kickoff() {
+    if [[ "$kickoff" -eq 0 || -z "$PM_KIND" ]]; then
+        return 0
+    fi
+    if [[ -f "${trio_dir}/status.json" ]]; then
+        echo "Arranque ya enviado (existe ${trio_dir}/status.json); no se reenvía."
+        return 0
+    fi
+    local texto
+    texto="$(renderizar_kickoff)" || return 1
+    if [[ "$dry_run" -eq 1 ]]; then
+        echo "[dry-run] mkdir -p \"$trio_dir\""
+        echo "[dry-run] herdr agent prompt \"$agent_pm\" \"<trio-pm-prompt.md renderizado>\""
+        echo "[dry-run] escribir ${trio_dir}/status.json {\"ticket\":\"${ticket}\",\"fase\":\"plan\"}"
+        return 0
+    fi
+    local out
+    if ! out="$(herdr agent prompt "$agent_pm" "$texto" 2>&1)"; then
+        echo "Aviso: no se pudo enviar el arranque a ${agent_pm}: ${out}" >&2
+        echo "Pegalo a mano: pj-trio --print-kickoff ${project_name} ${ticket}${repo_arg:+ --repo $repo_arg}" >&2
+        return 0
+    fi
+    mkdir -p "$trio_dir"
+    jq -n --arg t "$ticket" '{ticket: $t, fase: "plan"}' > "${trio_dir}/status.json"
+}
 
 # 5. Verificación de agentes disponibles para agy
 verificar_agentes_disponibles() {
@@ -270,10 +380,6 @@ if [[ "$dry_run" -eq 1 ]]; then
     echo "[dry-run] herdr tab create --workspace \"<id_ws>\" --cwd \"$project_dir\" --label rv --no-focus"
     echo "[dry-run] herdr pane rename \"<id_pane_rv>\" \"RV-${ticket}\""
 
-    agent_pm=$(echo "pm-${ticket}" | tr '[:upper:]' '[:lower:]')
-    agent_wk=$(echo "wk-${ticket}" | tr '[:upper:]' '[:lower:]')
-    agent_rv=$(echo "rv-${ticket}" | tr '[:upper:]' '[:lower:]')
-
     for role in PM WK RV; do
         role_lower=$(echo "$role" | tr '[:upper:]' '[:lower:]')
         k=""
@@ -293,6 +399,9 @@ if [[ "$dry_run" -eq 1 ]]; then
             echo "[dry-run] # ${role}_KIND vacío: se deja el shell en tab ${role_lower}"
         fi
     done
+
+    fijar_identidad_git
+    enviar_kickoff
 
     echo ""
     echo "Workspace ID: <simulado> ($ws_label)"
@@ -318,8 +427,9 @@ if ! ws_list_json="$(herdr workspace list 2>&1)"; then
     exit 1
 fi
 
-# 9. Instalación de integraciones
+# 9. Instalación de integraciones e identidad git
 instalar_integraciones
+fijar_identidad_git
 
 # 10. Creación o reutilización del workspace y tabs (idempotente)
 existing_ws_id="$(echo "$ws_list_json" | jq -r --arg label "$ws_label" '.result.workspaces[]? | select(.label == $label) | .workspace_id' | head -n 1)"
@@ -446,13 +556,18 @@ iniciar_agente_rol() {
     fi
 
     local agent_name
-    agent_name="$(echo "${role}-${ticket}" | tr '[:upper:]' '[:lower:]')"
+    agent_name="$(nombre_agente "$role")"
 
     local live_agents
     live_agents="$(herdr agent list 2>/dev/null || true)"
-    # Solo por pane: el nombre (pm-<ticket>) puede repetirse en otro proyecto con el mismo ticket.
     if echo "$live_agents" | jq -e --arg p "$pane_id" \
         '.result.agents[]? | select(.pane_id == $p)' >/dev/null 2>&1; then
+        return 0
+    fi
+    # El nombre es por proyecto: si ya vive en otro pane (otro ticket abierto), no se duplica.
+    if echo "$live_agents" | jq -e --arg n "$agent_name" \
+        '.result.agents[]? | select(.name == $n)' >/dev/null 2>&1; then
+        echo "Aviso: el agente '${agent_name}' ya corre en otro pane; cerrá ese trío antes de abrir otro ticket de ${project_name}." >&2
         return 0
     fi
 
@@ -487,9 +602,7 @@ iniciar_agente_rol "PM" "$pm_pane" "$PM_KIND"
 iniciar_agente_rol "WK" "$wk_pane" "$WK_KIND"
 iniciar_agente_rol "RV" "$rv_pane" "$RV_KIND"
 
-agent_pm="$(echo "pm-${ticket}" | tr '[:upper:]' '[:lower:]')"
-agent_wk="$(echo "wk-${ticket}" | tr '[:upper:]' '[:lower:]')"
-agent_rv="$(echo "rv-${ticket}" | tr '[:upper:]' '[:lower:]')"
+enviar_kickoff
 
 # 12. Salida final
 cat <<EOF
