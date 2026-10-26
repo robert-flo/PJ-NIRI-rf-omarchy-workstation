@@ -910,6 +910,7 @@ else
   done
 
   # 2.3 Reconciliación de paquetes base declarados (fatal si falla)
+  # Incluye herdr: viene del repo [omarchy] vía omarchy-base.packages (paso previo a 2.4).
   log_change "[CAMBIO] Reconciliando paquetes declarados (omarchy reinstall pkgs)..."
   CHANGES=$((CHANGES + 1))
   run omarchy reinstall pkgs
