@@ -356,13 +356,13 @@ fi
 echo ""
 log_info "=== [Etapa 1/3] Configuración Criptográfica, Almacenamiento y Pacman ==="
 
-# 1.1 Asegurar paquetes base del sistema (acl, git y jq)
-if pacman -Q acl git jq >/dev/null 2>&1; then
-  log_ok "[✓] ya los paquetes base acl, git y jq están instalados."
+# 1.1 Asegurar paquetes base del sistema (acl y git)
+if pacman -Q acl git >/dev/null 2>&1; then
+  log_ok "[✓] ya los paquetes base acl y git están instalados."
 else
-  log_change "[CAMBIO] Instalando paquetes requeridos: acl git jq..."
+  log_change "[CAMBIO] Instalando paquetes requeridos: acl git..."
   CHANGES=$((CHANGES + 1))
-  run pacman -S --needed --noconfirm acl git jq
+  run pacman -S --needed --noconfirm acl git
 fi
 
 # 1.2 Asegurar directorio raíz compartido ($ZROOT)
@@ -704,50 +704,16 @@ if [[ "$ROLE" == "padre" ]]; then
         exit 1
       fi
     fi
+  fi
 
-    # 2.4 Workspace multi-root $WORKSPACE_DIR/pj-omarchy.code-workspace
-    # Fuente versionada: scripts/omarchy-onboarding/pj-omarchy.code-workspace
-    # (nombres descriptivos y settings). Nunca se sobrescribe un archivo existente:
-    # solo se añaden las carpetas que falten, conservando nombres y settings.
-    # Si no falta ninguna, no se escribe nada (idempotente).
-    if [[ ${#REPO_DIRS[@]} -gt 0 ]]; then
-      WS_TARGET="$WORKSPACE_DIR/pj-omarchy.code-workspace"
-      WS_TEMPLATE="$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/pj-omarchy.code-workspace"
-      if [[ -f "$WS_TARGET" ]]; then
-        WS_BASE="$WS_TARGET"
-      elif [[ -f "$WS_TEMPLATE" ]]; then
-        WS_BASE="$WS_TEMPLATE"
-      else
-        WS_BASE=""
-      fi
-      WS_PATHS_JSON="$(printf '%s\n' "." "${REPO_DIRS[@]}" | jq -R . | jq -s .)"
-      if [[ -n "$WS_BASE" ]] && ! jq -e . "$WS_BASE" >/dev/null 2>&1; then
-        log_err "$WS_BASE no es JSON válido; no se toca. Corregilo a mano."
-        exit 1
-      fi
-      WS_MISSING="$(
-        if [[ -n "$WS_BASE" ]]; then cat "$WS_BASE"; else echo '{"folders":[],"settings":{}}'; fi |
-          jq -r --argjson want "$WS_PATHS_JSON" '[(.folders // [])[].path] as $have | $want[] | select(. as $p | $have | index($p) | not)'
-      )"
-      if [[ -f "$WS_TARGET" && -z "$WS_MISSING" ]]; then
-        log_ok "[✓] ya el workspace multi-root pj-omarchy.code-workspace contiene todas las carpetas."
-      else
-        log_change "[CAMBIO] Completando workspace multi-root en $WS_TARGET (faltan: ${WS_MISSING//$'\n'/ })..."
-        CHANGES=$((CHANGES + 1))
-        WS_JSON_TMP="$(mktemp "${TMPDIR:-/tmp}/pj-omarchy.code-workspace.XXXXXX")"
-        CLEANUP_FILES+=("$WS_JSON_TMP")
-        if [[ -n "$WS_BASE" ]]; then cat "$WS_BASE"; else echo '{"folders":[],"settings":{}}'; fi |
-          jq --tab --argjson want "$WS_PATHS_JSON" '
-            .folders = ((.folders // []) + [ $want[] as $p | select(([(.folders // [])[].path] | index($p)) | not)
-              | {name: (if $p == "." then "pj-omarchy" else $p end), path: $p} ])
-            | .settings = (.settings // {})' > "$WS_JSON_TMP"
-        if [[ "$DRY_RUN" == true ]]; then
-          run install -m 0644 -o "$INVOKING_USER" "$WS_JSON_TMP" "$WS_TARGET"
-        else
-          install -m 0644 -o "$INVOKING_USER" -g wheel "$WS_JSON_TMP" "$WS_TARGET"
-        fi
-      fi
-    fi
+  # 2.4 El .code-workspace es de pj-omarchy (versionado allí; ADR 0001 §3.3).
+  # Workstation no lo crea ni lo modifica: solo verifica que exista.
+  if [[ -f "$WORKSPACE_DIR/pj-omarchy.code-workspace" ]]; then
+    log_ok "[✓] ya existe $WORKSPACE_DIR/pj-omarchy.code-workspace (dueño: pj-omarchy)."
+  elif [[ "$DRY_RUN" == true ]]; then
+    log_info "[DRY-RUN] $WORKSPACE_DIR/pj-omarchy.code-workspace no existe; se esperaría tras ./pj listo."
+  else
+    log_err "Falta $WORKSPACE_DIR/pj-omarchy.code-workspace. Es de pj-omarchy: actualizá ese repo (git pull). Workstation no lo crea; se continúa."
   fi
 
   # 2.5 Permisos y ACLs en $WORKSPACE_DIR (sólo si hay drift detectado)

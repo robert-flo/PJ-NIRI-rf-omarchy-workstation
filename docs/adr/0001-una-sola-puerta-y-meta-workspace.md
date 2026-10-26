@@ -68,6 +68,7 @@ Por decisión expresa de Roberto, se valida una única excepción a la regla gen
 * El único dueño y responsable de la estructura interna de `/z/pj-omarchy` y de sus sub-repositorios es el CLI `./pj` perteneciente a dicho proyecto.
 * El comando canónico `./pj listo` es el encargado de consultar `proyecto.yml` y clonar o alinear todos los repositorios del ecosistema.
 * El asistente de onboarding de workstation no inventa clonaciones manuales individuales: se limita a invocar `./pj listo`. Únicamente en caso de contingencia o ausencia de `./pj`, utiliza un mecanismo de fallback que lee `proyecto.yml` para clonar exclusivamente los repositorios faltantes.
+* `pj-omarchy.code-workspace` (el workspace multi-raíz con los nombres descriptivos y `settings`) **es de pj-omarchy**: está versionado en `robert-flo/pj-omarchy` (`!pj-omarchy.code-workspace` en su `.gitignore`, listado en `extras:` de `proyecto.yml`). Workstation no lo genera, no lo fusiona ni lo modifica: PADRE solo verifica que exista después de `./pj listo` y, si falta, avisa sin crearlo.
 
 ### 3.4. Soberanía de `/etc/pacman.conf` y Drop-in Modular
 
