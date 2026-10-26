@@ -68,7 +68,7 @@ flowchart TD
 
     subgraph Arquetipo_B ["Arquetipo B: Infraestructura y Demonios"]
         ArqB_Src["Fuente: robert-flo/ravn-&lt;herramienta&gt;\n(Plantilla madre: pj-domina-rf-shared_dir)"]
-        ArqB_Dist["Distribución: robert-flo/ravn-&lt;herramienta&gt;-arch\n(Plantilla madre: pj-domina-rf-shared_dir-aur)"]
+        ArqB_Dist["Distribución: robert-flo/ravn-&lt;herramienta&gt;-arch\n(Plantilla madre: pj-domina-rf-shared_dir-arch)"]
         ArqB_Desc["• Servicios en segundo plano\n• Watchers inotifywait\n• Timers de mantenimiento periódico\n• Unidades systemd (/usr/lib/systemd/system)"]
         ArqB_Src --- ArqB_Dist --- ArqB_Desc
     end
@@ -85,14 +85,14 @@ flowchart TD
 #### Arquetipo B: Infraestructura y Servicios Systemd (Plantilla madre `shared_dir`)
 * **Repositorio Fuente (`ravn-<nombre>`):** Hereda de `robert-flo/pj-domina-rf-shared_dir`.
   - Contiene los scripts de demonio, helpers de interacción con el kernel / ACLs, unidades de systemd de plantilla y suite de pruebas en contenedor.
-* **Repositorio Distribución Arch (`ravn-<nombre>-arch`):** Hereda de `robert-flo/pj-domina-rf-shared_dir-aur`.
+* **Repositorio Distribución Arch (`ravn-<nombre>-arch`):** Hereda de `robert-flo/pj-domina-rf-shared_dir-arch`.
   - Contiene el `PKGBUILD` configurado para ubicar las unidades de servicio en `/usr/lib/systemd/system/` y los ejecutables en `/usr/bin/`, con los triggers correspondientes de `systemd --system daemon-reload`.
 
 ---
 
 ## 4. Matriz Comparativa y Reglas de Oro
 
-| Atributo | Arquetipo A (`git-setup` / `git-setup-arch`) | Arquetipo B (`shared_dir` / `shared_dir-aur`) |
+| Atributo | Arquetipo A (`git-setup` / `git-setup-arch`) | Arquetipo B (`shared_dir` / `shared_dir-arch`) |
 | :--- | :--- | :--- |
 | **Casos de uso** | CLI, scripts, webapps (`.desktop`), iconpacks, launchers. | Daemons, watchers inotify, timers periódicos de sistema. |
 | **Persistencia en ejecución** | Se ejecuta bajo demanda y termina inmediatamente. | Corre indefinidamente en memoria gestionado por PID 1. |
