@@ -256,6 +256,10 @@ enviar_kickoff() {
     if [[ "$kickoff" -eq 0 || -z "$PM_KIND" ]]; then
         return 0
     fi
+    if [[ "${pm_duplicado:-0}" -eq 1 ]]; then
+        echo "Aviso: ${agent_pm} ya corre en otro pane; no envío el arranque ni escribo status.json." >&2
+        return 0
+    fi
     if [[ -f "${trio_dir}/status.json" ]]; then
         echo "Arranque ya enviado (existe ${trio_dir}/status.json); no se reenvía."
         return 0
@@ -580,6 +584,7 @@ iniciar_agente_rol() {
     if echo "$live_agents" | jq -e --arg n "$agent_name" \
         '.result.agents[]? | select(.name == $n)' >/dev/null 2>&1; then
         echo "Aviso: el agente '${agent_name}' ya corre en otro pane; ese ticket ya tiene su trío abierto." >&2
+        [[ "$role" == "PM" ]] && pm_duplicado=1
         return 0
     fi
 
@@ -610,6 +615,7 @@ iniciar_agente_rol() {
     fi
 }
 
+pm_duplicado=0
 iniciar_agente_rol "PM" "$pm_pane" "$PM_KIND"
 iniciar_agente_rol "WK" "$wk_pane" "$WK_KIND"
 iniciar_agente_rol "RV" "$rv_pane" "$RV_KIND"
