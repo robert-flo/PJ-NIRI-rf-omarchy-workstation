@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
-# Wrapper para invocar Neovim usando la configuración aislada '2kvim' (nvim2k)
-# Utiliza NVIM_APPNAME para separar configuración (~/.config/2kvim), plugins, caché y estado.
-NVIM_APPNAME="2kvim" exec nvim "$@"
+# Invocación nativa XDG para 2kvim (cero symlinks en $HOME)
+export NVIM_APPNAME="2kvim"
+export XDG_CONFIG_DIRS="/z/nvims:${XDG_CONFIG_DIRS:-/etc/xdg}"
+exec /usr/bin/nvim "$@"

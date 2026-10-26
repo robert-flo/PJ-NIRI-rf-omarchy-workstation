@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# Wrapper predeterminado: si no se especifica otra distro, abre rvim
+export NVIM_APPNAME="${NVIM_APPNAME:-rvim}"
+export XDG_CONFIG_DIRS="/z/nvims:${XDG_CONFIG_DIRS:-/etc/xdg}"
+exec /usr/bin/nvim "$@"

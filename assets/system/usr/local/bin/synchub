@@ -255,7 +255,7 @@ sync_single_target() {
         log "Modo RÉPLICA / PULL activo: Descargando $cloud_remote ➔ $local_path"
         mkdir -p "$local_path"
         if [[ -n "$cloud_remote" ]] && command -v rclone >/dev/null 2>&1; then
-            rclone copy "$cloud_remote" "$local_path" -P --fast-list "${RCLONE_EXCLUDES[@]}"
+            rclone copy "$cloud_remote" "$local_path" -P --fast-list --skip-links "${RCLONE_EXCLUDES[@]}"
             log "Descarga RÉPLICA completada exitosamente."
         fi
         return 0
@@ -310,7 +310,7 @@ sync_single_target() {
         else
             rclone_args+=("copy")
         fi
-        rclone_args+=("$local_path" "$cloud_remote" -P --fast-list)
+        rclone_args+=("$local_path" "$cloud_remote" -P --fast-list --skip-links)
         [[ "$cloud_trash" == true ]] && rclone_args+=(--drive-use-trash)
         [[ "$DRY_RUN" == true ]] && rclone_args+=(--dry-run)
         rclone_args+=("${RCLONE_EXCLUDES[@]}")
