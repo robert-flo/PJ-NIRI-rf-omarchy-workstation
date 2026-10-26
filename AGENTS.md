@@ -21,9 +21,13 @@ Este repositorio (`PJ-NIRI-rf-omarchy-workstation`) persigue una visión fundame
    - Ninguna configuración del sistema operativo (fuera de `$HOME`) debe quedar como un ajuste huérfano en la máquina.
    - Todo archivo de sistema (`/etc/`, `/usr/`, plantillas `/etc/skel/`, servicios systemd, reglas de sudoers, etc.) **DEBE** tener su copia exacta e idéntica en `assets/system/<ruta absoluta>` y estar registrado en [[07.4 - Archivos de Sistema de Referencia (assets-system)]].
    - *Regla de oro:* Si cambias un archivo en la máquina, actualizas su espejo en el vault; si despliegas en una máquina nueva, se instala desde `assets/system/`.
+   - *Nota de arquitectura y gobernanza:* La única puerta a `/` es `pacman` (paquetes publicados por `pj-omarchy` en `robert-flo/omarchy-personal-repo`). `assets/system/` queda reservado exclusivamente para configuraciones en `/etc/` y huérfanos sin empaquetar. Ver [[docs/adr/0001-una-sola-puerta-y-meta-workspace|ADR 0001 — Una Sola Puerta y Meta-Workspace]].
 
 4. **El "Punto Dulce" Multi-Usuario Permanente:**
    - Todos los perfiles gestionados (`omarchy`, `niri`, `nyxuri`, etc.) deben disponer de sus herramientas compartidas (Neovim dual, SDK oficial de Android, fondos de pantalla, binarios globales) listas para usar sin fricción ni configuraciones manuales repetitivas en cada usuario.
+
+5. **Decisiones de Arquitectura Formalizadas (ADR):**
+   - Las decisiones arquitectónicas de fondo están formalizadas en los registros de decisiones (ADR). Consultá [[docs/adr/0001-una-sola-puerta-y-meta-workspace|ADR 0001 — Una Sola Puerta y Meta-Workspace]] para el modelo de empaquetado, meta-workspace `/z/pj-omarchy` y convergencia del onboarding.
 
 ---
 
@@ -46,7 +50,7 @@ Este repositorio (`PJ-NIRI-rf-omarchy-workstation`) persigue una visión fundame
 ## Entorno y Usuarios
 
 - Usuarios del sistema:
-  - `gracie` / `omarchy`: Administración del sistema + entorno Omarchy/Hyprland base.
+  - `omarchy`: Administración del sistema + entorno Omarchy/Hyprland base (cualquier máquina puede tomar rol PADRE o HIJA independientemente del nombre de usuario).
   - `niri`: Producción de escritorio Wayland bajo Clavis Shell (Quickshell).
   - `niri-test` (referenciado también como `sura`): Entorno de pruebas visuales y testbench para Clavis (desechable, se recrea desde dotfiles).
   - `nyxuri`: Producción de escritorio Wayland bajo Noctalia Shell / Nyxuri Engine (Edge T3 M4).
