@@ -847,7 +847,13 @@ if [[ "$ROLE" == "padre" ]]; then
   done
 
   # 2.9 Activar Modo Live con omarchy dev link (fatal si falla)
-  log_info "Verificando Modo Live hacia $DEV_DIR..."
+  # OMARCHY_PATH debe ser una ruta real: omarchy_security_require_source_root
+  # exige OMARCHY_PATH == realpath(OMARCHY_PATH). $DEV_DIR suele ser el symlink
+  # /z/fo-omarchy, así que se compara /etc/omarchy.conf contra su realpath y,
+  # si difiere (p. ej. tras mover el checkout al meta-workspace), se reescribe
+  # con 'omarchy dev link', que ya escribe la ruta resuelta.
+  DEV_DIR_REAL="$(realpath -e "$DEV_DIR" 2>/dev/null || echo "$DEV_DIR")"
+  log_info "Verificando Modo Live hacia $DEV_DIR_REAL..."
   if ! command -v omarchy >/dev/null 2>&1; then
     if [[ "$DRY_RUN" == true ]]; then
       log_change "[CAMBIO] Activando Modo Live apuntando a $DEV_DIR..."
@@ -861,8 +867,8 @@ if [[ "$ROLE" == "padre" ]]; then
       log_err "Comando 'omarchy' no encontrado en PATH. En modo PADRE 'omarchy dev link' es obligatorio."
       exit 1
     fi
-  elif grep -qE "OMARCHY_PATH=[\"']?${DEV_DIR}[\"']?" /etc/omarchy.conf 2>/dev/null; then
-    log_ok "[✓] ya Modo Live de desarrollo apunta a $DEV_DIR."
+  elif grep -qxF "export OMARCHY_PATH=\"${DEV_DIR_REAL}\"" /etc/omarchy.conf 2>/dev/null; then
+    log_ok "[✓] ya Modo Live de desarrollo apunta a $DEV_DIR_REAL (ruta real)."
   else
     log_change "[CAMBIO] Activando Modo Live apuntando a $DEV_DIR..."
     CHANGES=$((CHANGES + 1))
@@ -874,11 +880,12 @@ if [[ "$ROLE" == "padre" ]]; then
       fi
     else
       if [[ $EUID -eq 0 && -n "${SUDO_USER:-}" ]]; then
-        sudo -u "$SUDO_USER" omarchy dev link "$DEV_DIR"
+        sudo -u "$SUDO_USER" omarchy dev link "$DEV_DIR_REAL" --no-reboot
       else
-        omarchy dev link "$DEV_DIR"
+        omarchy dev link "$DEV_DIR_REAL" --no-reboot
       fi
-      log_ok "[✓] ya Modo Live configurado exitosamente hacia $DEV_DIR."
+      log_ok "[✓] ya Modo Live configurado exitosamente hacia $DEV_DIR_REAL."
+      log_info "Abrí una terminal nueva (o 'source ~/.bashrc') para tomar el nuevo OMARCHY_PATH."
     fi
   fi
 
