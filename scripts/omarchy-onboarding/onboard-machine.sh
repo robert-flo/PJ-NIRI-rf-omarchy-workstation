@@ -26,9 +26,16 @@ set -euo pipefail
 # ------------------------------------------------------------------------------
 # Configuración y Variables Globales (con soporte para testing / contenedores)
 # ------------------------------------------------------------------------------
-KEY_ID="76AFFCC217DB9FC4"
-FINGERPRINT="CD92AB07B1D24DC9A74EB60E76AFFCC217DB9FC4"
+# Clave de firma del repo pacman personal (ADR 0002 de omarchy-personal-repo,
+# ADR-012 de fork-docs). NO es la clave oficial de Omarchy.
+KEY_ID="E954119B629B58F6"
+FINGERPRINT="14EDEAC8B295BB30CA6249A9E954119B629B58F6"
+# Clave retirada (ADR-012): se elimina del llavero si sigue presente.
+OLD_KEY_ID="76AFFCC217DB9FC4"
+OLD_FINGERPRINT="CD92AB07B1D24DC9A74EB60E76AFFCC217DB9FC4"
 KEY_URL="https://robert-flo.github.io/omarchy-personal-repo/keys/omarchy-personal-repo.pub.asc"
+ONBOARD_SCRIPT_DIR="$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")"
+VENDORED_KEY="${ONBOARD_SCRIPT_DIR}/../../assets/keys/omarchy-personal-repo.pub.asc"
 META_REPO_URL="https://github.com/robert-flo/pj-omarchy.git"
 
 ZROOT="${ZROOT:-/z}"
@@ -413,6 +420,11 @@ else
 fi
 
 # 1.3 Llavero GPG
+# Huella de un fichero .asc (vacío si no es legible).
+key_file_fpr() {
+  gpg --show-keys --with-colons --with-fingerprint "$1" 2>/dev/null | awk -F: '/^fpr:/{print $10; exit}'
+}
+
 if pacman-key --list-keys "$KEY_ID" >/dev/null 2>&1; then
   existing_fpr="$(pacman-key --finger "$KEY_ID" 2>/dev/null | tr -d '[:space:]')"
   if [[ "$existing_fpr" != *"$FINGERPRINT"* ]]; then
@@ -422,23 +434,25 @@ if pacman-key --list-keys "$KEY_ID" >/dev/null 2>&1; then
   log_ok "[✓] ya la clave GPG personal ($KEY_ID) está confiada con huella correcta."
 else
   key_source=""
-  is_tmp_key=false
-  cand1="$WORKSPACE_DIR/rf-fork-docs/keys/omarchy-personal-repo.pub.asc"
-  cand2="${ZROOT}/fork-docs/keys/omarchy-personal-repo.pub.asc"
+  # Candidatos locales en orden; se descartan los que no tengan la huella vigente
+  # (p. ej. copias viejas con la clave retirada).
+  for cand in "$VENDORED_KEY" \
+              "$WORKSPACE_DIR/rf-fork-docs/keys/omarchy-personal-repo.pub.asc" \
+              "${ZROOT}/fork-docs/keys/omarchy-personal-repo.pub.asc"; do
+    if [[ -f "$cand" && "$(key_file_fpr "$cand")" == "$FINGERPRINT" ]]; then
+      key_source="$cand"
+      break
+    fi
+  done
 
-  if [[ -f "$cand1" ]]; then
-    key_source="$cand1"
-  elif [[ -f "$cand2" ]]; then
-    key_source="$cand2"
-  elif [[ "$DRY_RUN" == false ]]; then
+  if [[ -z "$key_source" && "$DRY_RUN" == false ]]; then
     key_source="$(mktemp "${TMPDIR:-/tmp}/omarchy-key.XXXXXX.asc")"
-    is_tmp_key=true
     CLEANUP_FILES+=("$key_source")
     curl -fsSL "$KEY_URL" -o "$key_source"
   fi
 
   if [[ -n "$key_source" ]]; then
-    extracted_fpr="$(gpg --show-keys --with-colons --with-fingerprint "$key_source" 2>/dev/null | awk -F: '/^fpr:/{print $10; exit}')"
+    extracted_fpr="$(key_file_fpr "$key_source")"
     if [[ "$extracted_fpr" != "$FINGERPRINT" ]]; then
       log_err "Huella de clave GPG inválida en $key_source: $extracted_fpr (esperada: $FINGERPRINT)."
       exit 1
@@ -446,17 +460,23 @@ else
     log_change "[CAMBIO] Añadiendo y firmando clave GPG personal ($KEY_ID)..."
     CHANGES=$((CHANGES + 1))
     run pacman-key --add "$key_source"
-    run pacman-key --lsign-key "$KEY_ID"
-    if [[ "$is_tmp_key" == true ]]; then
-      rm -f "$key_source"
-    fi
+    run pacman-key --lsign-key "$FINGERPRINT"
   else
     # Simulación en caso de clave no presente en disco
-    log_change "[CAMBIO] Se obtendría la clave GPG desde $KEY_URL y se firmaría con pacman-key --lsign-key $KEY_ID"
+    log_change "[CAMBIO] Se obtendría la clave GPG desde $KEY_URL y se firmaría con pacman-key --lsign-key $FINGERPRINT"
     CHANGES=$((CHANGES + 1))
     run pacman-key --add "$KEY_URL"
-    run pacman-key --lsign-key "$KEY_ID"
+    run pacman-key --lsign-key "$FINGERPRINT"
   fi
+fi
+
+# 1.3b Retirar la clave vieja (ADR-012) si sigue en el llavero
+if pacman-key --list-keys "$OLD_FINGERPRINT" >/dev/null 2>&1; then
+  log_change "[CAMBIO] Eliminando del llavero la clave retirada ($OLD_KEY_ID)..."
+  CHANGES=$((CHANGES + 1))
+  run pacman-key --delete "$OLD_FINGERPRINT"
+else
+  log_ok "[✓] ya la clave retirada ($OLD_KEY_ID) no está en el llavero."
 fi
 
 # 1.4 Drop-in /etc/pacman.d/omarchy-personal.conf
