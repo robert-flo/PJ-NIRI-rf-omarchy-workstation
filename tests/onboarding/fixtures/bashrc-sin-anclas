@@ -1,0 +1,3 @@
+# bashrc a mano, sin las anclas de Omarchy
+[[ $- != *i* ]] && return
+alias ll='ls -la'

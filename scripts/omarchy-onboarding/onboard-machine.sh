@@ -966,6 +966,30 @@ else
   fi
 fi
 
+# 2.10 (ambos roles) ~/.bashrc del usuario invocador carga el overlay ravn-omarchy
+# Un ~/.bashrc copiado de un stub viejo de Omarchy no trae las líneas de
+# /usr/share/ravn/omarchy/bash/{env,rc}, y entonces no cargan los alias rs/ri.
+# Crea el archivo desde el stub si falta, o inserta las líneas que falten tras
+# su ancla, con respaldo ~/.bashrc.bak-<ts> solo si cambia algo.
+# shellcheck source=bashrc-overlay.sh
+source "${ONBOARD_SCRIPT_DIR}/bashrc-overlay.sh"
+BASHRC_USUARIO="${USER_HOME}/.bashrc"
+log_info "Verificando que $BASHRC_USUARIO cargue el overlay ravn-omarchy..."
+if asegurar_bashrc_overlay "$BASHRC_USUARIO"; then
+  if [[ "$BASHRC_CAMBIOS" -gt 0 ]]; then
+    log_change "[CAMBIO] ${BASHRC_DETALLE^}."
+    CHANGES=$((CHANGES + BASHRC_CAMBIOS))
+    if [[ "$DRY_RUN" != true && $EUID -eq 0 && "$INVOKING_USER" != "root" ]]; then
+      chown "$INVOKING_USER:" "$(readlink -f "$BASHRC_USUARIO")" 2>/dev/null || true
+    fi
+    [[ "$DRY_RUN" == true ]] || log_info "Abrí una terminal nueva (o 'source ~/.bashrc') para cargar rs/ri."
+  else
+    log_ok "[✓] ya ${BASHRC_DETALLE}."
+  fi
+else
+  log_err "${BASHRC_DETALLE:-no se pudo verificar $BASHRC_USUARIO}; se continúa."
+fi
+
 # ------------------------------------------------------------------------------
 # ETAPA 3: Verificación Final del Sistema
 # ------------------------------------------------------------------------------

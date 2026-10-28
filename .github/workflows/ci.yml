@@ -17,6 +17,8 @@ jobs:
         run: |
           shellcheck scripts/omarchy-onboarding/onboard-machine.sh
           shellcheck scripts/omarchy-onboarding/ci-idempotencia.sh
+          shellcheck -x scripts/omarchy-onboarding/bashrc-overlay.sh
+          shellcheck -x -P SCRIPTDIR:. tests/onboarding/test-bashrc-overlay.sh
 
   vault:
     name: Validación del Vault
@@ -61,3 +63,12 @@ jobs:
           bash tests/secrets/test-export-staging-dotfiles.sh
       - name: Test de secretos (respaldo pty, sin plugin)
         run: LF_SIN_BATCHPASS=1 bash tests/secrets/test-export-staging-dotfiles.sh
+
+  bashrc-overlay:
+    name: Test de ~/.bashrc (overlay ravn-omarchy)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout del repositorio
+        uses: actions/checkout@v4
+      - name: Ejecutar test con fixtures
+        run: bash tests/onboarding/test-bashrc-overlay.sh
