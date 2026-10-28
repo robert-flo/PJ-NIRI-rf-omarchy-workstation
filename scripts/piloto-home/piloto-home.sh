@@ -36,7 +36,7 @@ DRY_RUN=0
 VERBOSE=0
 export VERBOSE
 PROFILE_REPO="https://github.com/robert-flo/ravn-home-profile-niri.git"
-PROFILE_BRANCH="master"
+PROFILE_BRANCH="main"
 DOTFILES_REPO="https://github.com/robert-flo/niri-dotfiles.git"
 DOTFILES_BRANCH="master"
 STATE_DIR="${CALLER_HOME}/.local/state/piloto-home"
@@ -57,6 +57,7 @@ DIFF_EXCLUDES=(
     "-x" "*.swp"
     "-x" "*~"
     "-x" "*.tmp"
+    "-x" "FETCH_HEAD"
 )
 
 log() {
