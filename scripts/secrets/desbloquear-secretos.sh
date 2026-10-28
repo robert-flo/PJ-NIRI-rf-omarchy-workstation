@@ -77,7 +77,9 @@ echo "[✓] Descifrado completado en memoria."
 # Modo Exportación para edición/mantenimiento
 if [[ -n "$EXPORT_STAGING" ]]; then
     mkdir -p "$EXPORT_STAGING"
-    cp -r "$TMP_DIR"/* "$EXPORT_STAGING/"
+    # "dir/." copia también las entradas ocultas (.gnupg, .ssh, .grokbot);
+    # un glob "dir/*" sin dotglob las omitiría (issue #78).
+    cp -a "$TMP_DIR"/. "$EXPORT_STAGING"/
     chmod -R 700 "$EXPORT_STAGING"
     echo ""
     echo "=================================================================="
@@ -124,7 +126,7 @@ for target in "${USERS[@]}"; do
     # B. Llaves SSH para commit signing y git push
     if [[ -d "$TMP_DIR/.ssh" ]]; then
         sudo mkdir -p "$target/.ssh"
-        sudo cp -a "$TMP_DIR/.ssh/"* "$target/.ssh/"
+        sudo cp -a "$TMP_DIR/.ssh/." "$target/.ssh/"
         sudo chmod 700 "$target/.ssh"
         [[ -f "$target/.ssh/id_ed25519" ]] && sudo chmod 600 "$target/.ssh/id_ed25519"
         [[ -f "$target/.ssh/id_ed25519.pub" ]] && sudo chmod 644 "$target/.ssh/id_ed25519.pub"
@@ -142,7 +144,7 @@ for target in "${USERS[@]}"; do
     # C. GitHub CLI (autenticación instantánea)
     if [[ -d "$TMP_DIR/gh" ]]; then
         sudo mkdir -p "$target/.config/gh"
-        sudo cp -a "$TMP_DIR/gh/"* "$target/.config/gh/"
+        sudo cp -a "$TMP_DIR/gh/." "$target/.config/gh/"
         sudo chmod 700 "$target/.config/gh"
         [[ -f "$target/.config/gh/hosts.yml" ]] && sudo chmod 600 "$target/.config/gh/hosts.yml"
         [[ -f "$target/.config/gh/config.yml" ]] && sudo chmod 600 "$target/.config/gh/config.yml"
@@ -289,7 +291,7 @@ fi
 
 if [[ -d "$TMP_DIR/keyrings" ]]; then
     mkdir -p /home/omarchy/.local/share/keyrings
-    cp -a "$TMP_DIR/keyrings/"* /home/omarchy/.local/share/keyrings/
+    cp -a "$TMP_DIR/keyrings/." /home/omarchy/.local/share/keyrings/
     chmod 700 /home/omarchy/.local/share/keyrings
     chmod 600 /home/omarchy/.local/share/keyrings/* 2>/dev/null || true
     echo "   [✓] Keyrings restaurados."
@@ -297,7 +299,7 @@ fi
 
 if [[ -d "$TMP_DIR/ticktick-cli" ]]; then
     mkdir -p /home/omarchy/.config/ticktick-cli
-    cp -a "$TMP_DIR/ticktick-cli/"* /home/omarchy/.config/ticktick-cli/
+    cp -a "$TMP_DIR/ticktick-cli/." /home/omarchy/.config/ticktick-cli/
     echo "   [✓] TickTick CLI config restaurada."
 fi
 
