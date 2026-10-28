@@ -15,7 +15,7 @@ jobs:
         uses: actions/checkout@v4
       - name: Ejecutar ShellCheck
         run: |
-          shellcheck scripts/omarchy-onboarding/onboard-machine.sh
+          shellcheck -x scripts/omarchy-onboarding/onboard-machine.sh
           shellcheck scripts/omarchy-onboarding/ci-idempotencia.sh
           shellcheck -x scripts/omarchy-onboarding/bashrc-overlay.sh
           shellcheck -x -P SCRIPTDIR:. tests/onboarding/test-bashrc-overlay.sh

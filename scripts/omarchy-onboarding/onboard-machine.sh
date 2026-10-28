@@ -971,7 +971,7 @@ fi
 # /usr/share/ravn/omarchy/bash/{env,rc}, y entonces no cargan los alias rs/ri.
 # Crea el archivo desde el stub si falta, o inserta las líneas que falten tras
 # su ancla, con respaldo ~/.bashrc.bak-<ts> solo si cambia algo.
-# shellcheck source=bashrc-overlay.sh
+# shellcheck source-path=SCRIPTDIR source=bashrc-overlay.sh
 source "${ONBOARD_SCRIPT_DIR}/bashrc-overlay.sh"
 BASHRC_USUARIO="${USER_HOME}/.bashrc"
 log_info "Verificando que $BASHRC_USUARIO cargue el overlay ravn-omarchy..."
