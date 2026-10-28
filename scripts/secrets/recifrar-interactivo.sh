@@ -36,34 +36,18 @@ TMP_TAR="$TMP_WORK/nuevo.tar.gz"
 # Empaqueta con "." para incluir entradas ocultas (.gnupg, .ssh, .grokbot).
 tar -czf "$TMP_TAR" -C "$SECRETS_SRC" .
 
-# age con frase desde AGE_PASSPHRASE (no interactivo) o en terminal.
-#   age_pty <modo> <salida> <entrada>   modo: d (descifrar) | p (cifrar)
-age_pty() {
-    local modo="$1" salida="$2" entrada="$3"
-    if [[ -n "${AGE_PASSPHRASE:-}" ]]; then
-        python3 -c '
-import pty, os, time, sys
-modo, salida, entrada = sys.argv[1:4]
-passphrase = os.environ["AGE_PASSPHRASE"]
-pid, fd = pty.fork()
-if pid == 0:
-    os.execlp("age", "age", "-" + modo, "-o", salida, entrada)
-else:
-    for _ in range(2 if modo == "p" else 1):
-        time.sleep(0.2)
-        os.write(fd, (passphrase + "\n").encode())
-    try:
-        while os.read(fd, 1024):
-            pass
-    except OSError:
-        pass
-    _, status = os.waitpid(pid, 0)
-    sys.exit(os.waitstatus_to_exitcode(status))
-' "$modo" "$salida" "$entrada"
-    else
-        age "-$modo" -o "$salida" "$entrada"
-    fi
-}
+# Contraseña: la leemos nosotros (nunca el prompt de age, que ofrece
+# autogenerar una si se deja vacía). Debe abrir el paquete actual salvo
+# rotación explícita con RECIFRAR_NUEVA_CLAVE=1 (issue #80).
+# shellcheck source=lib-frase.sh
+source "$SCRIPT_DIR/lib-frase.sh"
+echo "------------------------------------------------------------------"
+echo "Introduce tu contraseña maestra (dos veces). No puede estar vacía."
+echo "------------------------------------------------------------------"
+if ! obtener_frase_para_recifrar "$OUTPUT_FILE"; then
+    echo "Abortado. '$OUTPUT_FILE' no se modificó."
+    exit 3
+fi
 
 # Lista normalizada de entradas de un .tar.gz (sin "./" ni "/" final).
 listar_tar() {
@@ -72,10 +56,7 @@ listar_tar() {
 
 # Salvaguarda (issue #78): no sobrescribir un paquete con uno que pierde entradas.
 if [[ -f "$OUTPUT_FILE" ]]; then
-    echo "------------------------------------------------------------------"
-    echo "Verificando contra el paquete actual (se pedirá la contraseña ACTUAL)..."
-    echo "------------------------------------------------------------------"
-    age_pty d "$TMP_WORK/actual.tar.gz" "$OUTPUT_FILE"
+    age_descifrar "$FRASE_ACTUAL" "$TMP_WORK/actual.tar.gz" "$OUTPUT_FILE"
     listar_tar "$TMP_WORK/actual.tar.gz" > "$TMP_WORK/actual.lst"
     listar_tar "$TMP_TAR" > "$TMP_WORK/nuevo.lst"
     FALTAN="$(LC_ALL=C comm -23 "$TMP_WORK/actual.lst" "$TMP_WORK/nuevo.lst")"
@@ -108,14 +89,9 @@ if [[ -f "$OUTPUT_FILE" ]]; then
     echo ""
 fi
 
-echo "------------------------------------------------------------------"
-echo "A continuación, 'age' te solicitará tu contraseña maestra (NUEVA)."
-echo "Escribe tu contraseña y presiona ENTER (luego confírmala)."
-echo "------------------------------------------------------------------"
-echo ""
-
 # Cifra a un temporal y luego reemplaza, para no dejar un paquete a medias.
-age_pty p "$TMP_WORK/salida.age" "$TMP_TAR"
+age_cifrar "$FRASE" "$TMP_WORK/salida.age" "$TMP_TAR"
+unset FRASE FRASE_ACTUAL
 mv -f "$TMP_WORK/salida.age" "$OUTPUT_FILE"
 
 chmod 600 "$OUTPUT_FILE"

@@ -53,19 +53,12 @@ trap 'rm -rf "$TMP_DIR"' EXIT
 
 echo "[1/6] Descifrando secretos en memoria segura (/dev/shm)..."
 if [[ -n "${AGE_PASSPHRASE:-}" ]]; then
-    python3 -c '
-import pty, os, time, sys
-passphrase = os.environ["AGE_PASSPHRASE"]
-pid, fd = pty.fork()
-if pid == 0:
-    os.execlp("age", "age", "-d", "-o", sys.argv[2], sys.argv[1])
-else:
-    time.sleep(0.1)
-    os.write(fd, (passphrase + "\n").encode())
-    _, status = os.waitpid(pid, 0)
-    sys.exit(os.waitstatus_to_exitcode(status))
-' "$ENCRYPTED_FILE" "$TMP_DIR/bundle.tar.gz"
+    # shellcheck source=lib-frase.sh
+    source "$SCRIPT_DIR/lib-frase.sh"
+    age_descifrar "$AGE_PASSPHRASE" "$TMP_DIR/bundle.tar.gz" "$ENCRYPTED_FILE" || {
+        echo "ERROR: AGE_PASSPHRASE no descifra '$ENCRYPTED_FILE'."; exit 1; }
 else
+    # Descifrar no ofrece autogenerar; el prompt de age es seguro aquí.
     age -d -o "$TMP_DIR/bundle.tar.gz" "$ENCRYPTED_FILE"
 fi
 

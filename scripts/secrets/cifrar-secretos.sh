@@ -30,30 +30,24 @@ echo "Destino: $OUTPUT_FILE"
 echo ""
 
 TMP_TAR="$(mktemp --tmpdir=/dev/shm secrets-bundle-XXXXXX.tar.gz)"
-trap 'rm -f "$TMP_TAR"' EXIT
+trap 'rm -f "$TMP_TAR" "$TMP_TAR.age"' EXIT
 
 echo "[1/3] Creando paquete temporal en memoria (/dev/shm)..."
 tar -czf "$TMP_TAR" -C "$SECRETS_SRC" .
 
 echo "[2/3] Cifrando con age..."
-if [[ -n "${AGE_PASSPHRASE:-}" ]]; then
-    python3 -c '
-import pty, os, time, sys
-passphrase = os.environ["AGE_PASSPHRASE"]
-pid, fd = pty.fork()
-if pid == 0:
-    os.execlp("age", "age", "-p", "-o", sys.argv[1], sys.argv[2])
-else:
-    time.sleep(0.1)
-    os.write(fd, (passphrase + "\n").encode())
-    time.sleep(0.1)
-    os.write(fd, (passphrase + "\n").encode())
-    _, status = os.waitpid(pid, 0)
-    sys.exit(os.waitstatus_to_exitcode(status))
-' "$OUTPUT_FILE" "$TMP_TAR"
-else
-    age -p -o "$OUTPUT_FILE" "$TMP_TAR"
+# La contraseña la leemos nosotros: nunca el prompt de age, que ofrece
+# autogenerar una si se deja vacía (issue #80). Si el destino ya existe,
+# debe abrirlo salvo RECIFRAR_NUEVA_CLAVE=1.
+# shellcheck source=lib-frase.sh
+source "$SCRIPT_DIR/lib-frase.sh"
+if ! obtener_frase_para_recifrar "$OUTPUT_FILE"; then
+    echo "Abortado. '$OUTPUT_FILE' no se modificó."
+    exit 3
 fi
+age_cifrar "$FRASE" "$TMP_TAR.age" "$TMP_TAR"
+unset FRASE FRASE_ACTUAL
+mv -f "$TMP_TAR.age" "$OUTPUT_FILE"
 
 echo "[3/3] Protegiendo permisos de salida..."
 chmod 600 "$OUTPUT_FILE"
