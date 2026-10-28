@@ -28,71 +28,16 @@ echo "Secretos detectados en el staging:"
 find "$SECRETS_SRC" -maxdepth 2 -not -path "$SECRETS_SRC" | sed 's|'"$SECRETS_SRC"'/|  - |'
 echo ""
 
-TMP_WORK="$(mktemp -d --tmpdir=/dev/shm secrets-recifrar-XXXXXX)"
-chmod 700 "$TMP_WORK"
-trap 'rm -rf "$TMP_WORK"' EXIT
-TMP_TAR="$TMP_WORK/nuevo.tar.gz"
-
-# Empaqueta con "." para incluir entradas ocultas (.gnupg, .ssh, .grokbot).
-tar -czf "$TMP_TAR" -C "$SECRETS_SRC" .
-
-# Contraseña: la leemos nosotros (nunca el prompt de age, que ofrece
-# autogenerar una si se deja vacía). Debe abrir el paquete actual salvo
-# rotación explícita con RECIFRAR_NUEVA_CLAVE=1 (issue #80).
+# Contraseña (nunca autogenerada, verificada contra el paquete actual),
+# salvaguarda de pérdida de entradas, verificación y reemplazo atómico:
+# todo en lib-frase.sh (issues #78, #80).
 # shellcheck source=lib-frase.sh
 source "$SCRIPT_DIR/lib-frase.sh"
-echo "------------------------------------------------------------------"
-echo "Introduce tu contraseña maestra (dos veces). No puede estar vacía."
-echo "------------------------------------------------------------------"
-if ! obtener_frase_para_recifrar "$OUTPUT_FILE"; then
-    echo "Abortado. '$OUTPUT_FILE' no se modificó."
-    exit 3
-fi
-
-# Lista normalizada de entradas de un .tar.gz (sin "./" ni "/" final).
-listar_tar() {
-    tar -tzf "$1" | sed -e 's|^\./||' -e 's|/$||' | grep -v '^\.\?$' | LC_ALL=C sort -u
-}
-
-# Salvaguarda (issue #78): no sobrescribir un paquete con uno que pierde entradas.
-if [[ -f "$OUTPUT_FILE" ]]; then
-    age_descifrar "$FRASE_ACTUAL" "$TMP_WORK/actual.tar.gz" "$OUTPUT_FILE"
-    listar_tar "$TMP_WORK/actual.tar.gz" > "$TMP_WORK/actual.lst"
-    listar_tar "$TMP_TAR" > "$TMP_WORK/nuevo.lst"
-    FALTAN="$(LC_ALL=C comm -23 "$TMP_WORK/actual.lst" "$TMP_WORK/nuevo.lst")"
-    N_ACTUAL="$(wc -l < "$TMP_WORK/actual.lst")"
-    N_NUEVO="$(wc -l < "$TMP_WORK/nuevo.lst")"
-    echo "Entradas: actual=$N_ACTUAL nuevo=$N_NUEVO"
-    if [[ -n "$FALTAN" || "$N_NUEVO" -lt "$N_ACTUAL" ]]; then
-        echo ""
-        echo "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
-        echo "!! ATENCIÓN: el nuevo paquete tiene MENOS entradas que el actual."
-        echo "!! Faltarían:"
-        printf '%s\n' "$FALTAN" | sed 's|^|!!   - |'
-        echo "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
-        if [[ "${RECIFRAR_PERMITIR_PERDIDA:-0}" == "1" ]]; then
-            echo "[!] RECIFRAR_PERMITIR_PERDIDA=1: se continúa a pesar de la pérdida."
-        elif [[ -t 0 ]]; then
-            read -rp "Escribe PERDER para continuar de todos modos (cualquier otra cosa aborta): " CONFIRMA
-            if [[ "$CONFIRMA" != "PERDER" ]]; then
-                echo "Abortado. '$OUTPUT_FILE' no se modificó."
-                exit 2
-            fi
-        else
-            echo "Abortado (sin terminal). '$OUTPUT_FILE' no se modificó."
-            echo "Usa RECIFRAR_PERMITIR_PERDIDA=1 si la eliminación es intencional."
-            exit 2
-        fi
-    else
-        echo "[✓] No se pierde ninguna entrada del paquete actual."
-    fi
-    echo ""
-fi
-
-# Cifra a un temporal y luego reemplaza, para no dejar un paquete a medias.
-age_cifrar "$FRASE" "$TMP_WORK/salida.age" "$TMP_TAR"
-unset FRASE FRASE_ACTUAL
-mv -f "$TMP_WORK/salida.age" "$OUTPUT_FILE"
+set +e
+cifrar_paquete_seguro "$SECRETS_SRC" "$OUTPUT_FILE"
+RC=$?
+set -e
+[[ $RC -eq 0 ]] || exit "$RC"
 
 chmod 600 "$OUTPUT_FILE"
 

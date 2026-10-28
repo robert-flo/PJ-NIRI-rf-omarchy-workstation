@@ -49,12 +49,13 @@ echo ""
 # 1. Crear directorio temporal seguro en memoria RAM (/dev/shm)
 TMP_DIR="$(mktemp -d --tmpdir=/dev/shm secrets-decrypted-XXXXXX)"
 chmod 700 "$TMP_DIR"
-trap 'rm -rf "$TMP_DIR"' EXIT
+# lib-frase.sh instala el trap EXIT común; registramos el directorio en claro.
+# shellcheck source=lib-frase.sh
+source "$SCRIPT_DIR/lib-frase.sh"
+lf_registrar "$TMP_DIR"
 
 echo "[1/6] Descifrando secretos en memoria segura (/dev/shm)..."
 if [[ -n "${AGE_PASSPHRASE:-}" ]]; then
-    # shellcheck source=lib-frase.sh
-    source "$SCRIPT_DIR/lib-frase.sh"
     age_descifrar "$AGE_PASSPHRASE" "$TMP_DIR/bundle.tar.gz" "$ENCRYPTED_FILE" || {
         echo "ERROR: AGE_PASSPHRASE no descifra '$ENCRYPTED_FILE'."; exit 1; }
 else

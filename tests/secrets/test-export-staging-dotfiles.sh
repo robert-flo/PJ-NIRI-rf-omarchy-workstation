@@ -14,9 +14,12 @@ set -euo pipefail
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 S="$REPO/scripts/secrets"
 export AGE_PASSPHRASE="frase-de-prueba-no-real"
+export XDG_CACHE_HOME  # respaldos del paquete viejo van aquí, no a ~/.cache
 
 W="$(mktemp -d)"
 trap 'rm -rf "$W"' EXIT
+XDG_CACHE_HOME="$W/cache"
+SHM_ANTES="$(ls /dev/shm 2>/dev/null | grep -c "^secrets-" || true)"
 FALLOS=0
 ok()   { echo "  [OK]   $*"; }
 fallo(){ echo "  [FALLO] $*"; FALLOS=$((FALLOS+1)); }
@@ -129,6 +132,24 @@ else
 fi
 AGE_PASSPHRASE="frase-nueva" bash "$S/desbloquear-secretos.sh" --export-staging "$W/stg3" "$AGEF" >/dev/null 2>&1 \
     && ok "la frase nueva abre el paquete" || fallo "la frase nueva no abre el paquete"
+
+echo "[10] cifrar-secretos.sh con frase correcta pero staging sin .ssh (salvaguarda compartida)"
+STG4="$W/staging4"
+AGE_PASSPHRASE="frase-nueva" bash "$S/desbloquear-secretos.sh" --export-staging "$STG4" "$AGEF" >/dev/null 2>&1
+rm -rf "$STG4/.ssh"
+SUM="$(sha256sum "$AGEF")"
+set +e
+AGE_PASSPHRASE="frase-nueva" bash "$S/cifrar-secretos.sh" "$STG4" "$AGEF" </dev/null >"$W/r7.log" 2>&1; RC=$?
+set -e
+[[ $RC -ne 0 ]] && ok "cifrar-secretos rechazó la pérdida (exit $RC)" || { fallo "cifrar-secretos aceptó perder .ssh"; cat "$W/r7.log"; }
+[[ "$(sha256sum "$AGEF")" == "$SUM" ]] && ok "paquete intacto" || fallo "el paquete cambió"
+
+echo "[11] reemplazo seguro: respaldo, sin temporales sueltos"
+ls "$XDG_CACHE_HOME"/ravn-piloto/secrets-backups/secrets.tar.gz.age.bak-* >/dev/null 2>&1 \
+    && ok "respaldo del paquete anterior en XDG_CACHE_HOME" || fallo "no hay respaldo"
+if compgen -G "$W/.secrets.tar.gz.age.tmp.*" >/dev/null; then fallo "quedaron temporales junto al paquete"; else ok "sin temporales junto al paquete"; fi
+SHM_DESPUES="$(ls /dev/shm 2>/dev/null | grep -c "^secrets-" || true)"
+[[ "$SHM_DESPUES" -le "$SHM_ANTES" ]] && ok "sin temporales en /dev/shm" || fallo "quedaron temporales en /dev/shm"
 
 echo ""
 if [[ $FALLOS -eq 0 ]]; then echo "RESULTADO: OK"; else echo "RESULTADO: $FALLOS fallo(s)"; exit 1; fi
