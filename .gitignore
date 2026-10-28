@@ -14,3 +14,7 @@ Desktop.ini
 __pycache__/
 .trash/
 
+
+# Temporales y respaldos de los scripts de secretos (solo ciphertext)
+scripts/secrets/.secrets.tar.gz.age.tmp.*
+scripts/secrets/*.age.bak-*

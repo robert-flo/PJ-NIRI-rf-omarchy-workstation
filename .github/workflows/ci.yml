@@ -43,3 +43,21 @@ jobs:
         uses: actions/checkout@v4
       - name: Ejecutar validación de idempotencia
         run: bash scripts/omarchy-onboarding/ci-idempotencia.sh
+
+  secretos:
+    name: Tests de secretos (age)
+    runs-on: ubuntu-latest
+    container:
+      image: archlinux:latest
+    steps:
+      - name: Instalar dependencias en contenedor
+        run: pacman -Sy --noconfirm age python tar gzip diffutils
+      - name: Checkout del repositorio
+        uses: actions/checkout@v4
+      - name: Test de secretos (modo batchpass si el paquete lo trae)
+        run: |
+          age --version
+          command -v age-plugin-batchpass || echo "sin age-plugin-batchpass: se usa el respaldo pty"
+          bash tests/secrets/test-export-staging-dotfiles.sh
+      - name: Test de secretos (respaldo pty, sin plugin)
+        run: LF_SIN_BATCHPASS=1 bash tests/secrets/test-export-staging-dotfiles.sh
