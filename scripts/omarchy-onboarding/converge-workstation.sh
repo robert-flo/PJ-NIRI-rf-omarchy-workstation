@@ -28,6 +28,7 @@ BUILD_DIR="${BUILD_DIR:-/opt/src}"
 
 DRY_RUN=false
 SKIP_BUILDS=false
+NON_INTERACTIVE=false
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -39,15 +40,20 @@ while [[ $# -gt 0 ]]; do
       SKIP_BUILDS=true
       shift
       ;;
+    --non-interactive|--batch|-y)
+      NON_INTERACTIVE=true
+      shift
+      ;;
     -h|--help)
       cat << 'EOF'
 Uso:
   sudo ./scripts/omarchy-onboarding/converge-workstation.sh [opciones]
 
 Opciones:
-  -n, --dry-run       Simula y audita las capas sin modificar el sistema
-  --skip-builds       Omite la compilación pesada de niri-edge / quickshell (Clavis)
-  -h, --help          Muestra esta ayuda
+  -n, --dry-run          Simula y audita las capas sin modificar el sistema
+  --skip-builds          Omite la compilación pesada de niri-edge / quickshell (Clavis)
+  --non-interactive, -y  Ejecución desatendida sin prompts (hereda credenciales del admin)
+  -h, --help             Muestra esta ayuda
 EOF
       exit 0
       ;;
@@ -202,7 +208,7 @@ fi
 PASS_DESKTOP_HASH=""
 PASS_VOLATILE_HASH=""
 
-if [[ "$DRY_RUN" == false && -t 0 ]]; then
+if [[ "$DRY_RUN" == false && "$NON_INTERACTIVE" == false && -t 0 ]]; then
   echo ""
   echo "=========================================================================="
   echo "           Configuración de Cuentas y Contraseñas de la Estación          "
