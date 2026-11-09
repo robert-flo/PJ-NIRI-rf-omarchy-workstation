@@ -1,0 +1,12 @@
+{
+  "policies": {
+    "DisableAppUpdate": true,
+    "DefaultSerialGuardSetting": 3,
+    "Preferences": {
+      "toolkit.legacyUserProfileCustomizations.stylesheets": {
+        "Value": true,
+        "Status": "default"
+      }
+    }
+  }
+}
