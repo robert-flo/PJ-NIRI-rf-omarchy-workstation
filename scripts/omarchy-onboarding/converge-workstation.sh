@@ -831,7 +831,13 @@ install_sys_file "/etc/systemd/system/niri-update.service" "0644" "root:root"
 install_sys_file "/etc/systemd/system/niri-update.timer" "0644" "root:root"
 install_sys_file "/etc/greetd/config.toml" "0644" "root:root"
 install_sys_file "/etc/polkit-1/rules.d/50-noctalia-greeter.rules" "0644" "root:root"
-install_sys_file "/usr/share/applications/top.imsyy.splayer_next.desktop" "0644" "root:root"
+
+# Garantizar compatibilidad de comandos CLI para SPlayer-Next (splayer y splayer-next)
+if command -v splayer-next >/dev/null 2>&1 && [[ ! -e /usr/local/bin/splayer ]]; then
+  log_change "[CAMBIO] Configurando symlink /usr/local/bin/splayer -> $(command -v splayer-next)..."
+  CHANGES=$((CHANGES + 1))
+  run ln -sfn "$(command -v splayer-next)" /usr/local/bin/splayer
+fi
 
 # Registrar sesión Wayland omarchy en el display manager si existe en /usr/local
 if [[ -f /usr/local/share/wayland-sessions/omarchy.desktop && ! -e /usr/share/wayland-sessions/omarchy.desktop ]]; then
