@@ -273,32 +273,43 @@ GITCONF_EOF
     echo "   [✓] Configuración aplicada a: $target"
 done
 
-# 4. Restaurar llaves y datos personales de omarchy
-echo "[4/6] Restaurando llaves personales avanzadas para omarchy..."
-if [[ -d "$TMP_DIR/.gnupg" ]]; then
-    cp -a "$TMP_DIR/.gnupg" /home/omarchy/
-    chmod 700 /home/omarchy/.gnupg
-    find /home/omarchy/.gnupg -type f -exec chmod 600 {} + 2>/dev/null || true
-    find /home/omarchy/.gnupg -type d -exec chmod 700 {} + 2>/dev/null || true
-    echo "   [✓] GnuPG restaurado."
+# 4. Restaurar llaves y datos personales del usuario administrador
+PRIMARY_ADMIN="${SUDO_USER:-${USER:-rollo}}"
+if [[ "$PRIMARY_ADMIN" == "root" ]]; then
+    PRIMARY_ADMIN="$(awk -F: '$3 >= 1000 && $3 < 60000 {print $1; exit}' /etc/passwd || echo "rollo")"
+fi
+ADMIN_HOME="$(getent passwd "$PRIMARY_ADMIN" | cut -d: -f6)"
+[[ -z "$ADMIN_HOME" ]] && ADMIN_HOME="/home/$PRIMARY_ADMIN"
+
+echo "[4/6] Restaurando llaves personales avanzadas para '$PRIMARY_ADMIN'..."
+if [[ -d "$TMP_DIR/.gnupg" && -d "$ADMIN_HOME" ]]; then
+    cp -a "$TMP_DIR/.gnupg" "$ADMIN_HOME/"
+    chown -R "$PRIMARY_ADMIN:$PRIMARY_ADMIN" "$ADMIN_HOME/.gnupg" 2>/dev/null || true
+    chmod 700 "$ADMIN_HOME/.gnupg"
+    find "$ADMIN_HOME/.gnupg" -type f -exec chmod 600 {} + 2>/dev/null || true
+    find "$ADMIN_HOME/.gnupg" -type d -exec chmod 700 {} + 2>/dev/null || true
+    echo "   [✓] GnuPG restaurado en $ADMIN_HOME/.gnupg."
 fi
 
-if [[ -d "$TMP_DIR/keyrings" ]]; then
-    mkdir -p /home/omarchy/.local/share/keyrings
-    cp -a "$TMP_DIR/keyrings/." /home/omarchy/.local/share/keyrings/
-    chmod 700 /home/omarchy/.local/share/keyrings
-    chmod 600 /home/omarchy/.local/share/keyrings/* 2>/dev/null || true
-    echo "   [✓] Keyrings restaurados."
+if [[ -d "$TMP_DIR/keyrings" && -d "$ADMIN_HOME" ]]; then
+    mkdir -p "$ADMIN_HOME/.local/share/keyrings"
+    cp -a "$TMP_DIR/keyrings/." "$ADMIN_HOME/.local/share/keyrings/"
+    chown -R "$PRIMARY_ADMIN:$PRIMARY_ADMIN" "$ADMIN_HOME/.local/share/keyrings" 2>/dev/null || true
+    chmod 700 "$ADMIN_HOME/.local/share/keyrings"
+    chmod 600 "$ADMIN_HOME/.local/share/keyrings"/* 2>/dev/null || true
+    echo "   [✓] Keyrings restaurados en $ADMIN_HOME/.local/share/keyrings."
 fi
 
-if [[ -d "$TMP_DIR/ticktick-cli" ]]; then
-    mkdir -p /home/omarchy/.config/ticktick-cli
-    cp -a "$TMP_DIR/ticktick-cli/." /home/omarchy/.config/ticktick-cli/
+if [[ -d "$TMP_DIR/ticktick-cli" && -d "$ADMIN_HOME" ]]; then
+    mkdir -p "$ADMIN_HOME/.config/ticktick-cli"
+    cp -a "$TMP_DIR/ticktick-cli/." "$ADMIN_HOME/.config/ticktick-cli/"
+    chown -R "$PRIMARY_ADMIN:$PRIMARY_ADMIN" "$ADMIN_HOME/.config/ticktick-cli" 2>/dev/null || true
     echo "   [✓] TickTick CLI config restaurada."
 fi
 
-if [[ -d "$TMP_DIR/.grokbot" ]]; then
-    cp -a "$TMP_DIR/.grokbot" /home/omarchy/
+if [[ -d "$TMP_DIR/.grokbot" && -d "$ADMIN_HOME" ]]; then
+    cp -a "$TMP_DIR/.grokbot" "$ADMIN_HOME/"
+    chown -R "$PRIMARY_ADMIN:$PRIMARY_ADMIN" "$ADMIN_HOME/.grokbot" 2>/dev/null || true
     echo "   [✓] GrokBot config restaurada."
 fi
 
