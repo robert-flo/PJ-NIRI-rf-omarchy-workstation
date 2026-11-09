@@ -776,6 +776,25 @@ for entry in "${SHARED_DIRS[@]}"; do
 done
 log_ok "[✓] ya la estructura de directorios compartidos (/z, /zt, /z-drive, /opt/android-sdk) existe."
 
+# Repositorio canónico unificado de dotfiles (Chezmoi SSoT)
+RF_DOTFILES_DIR="/z/rf-dotfiles"
+if [[ ! -d "$RF_DOTFILES_DIR/.git" ]]; then
+  log_change "[CAMBIO] Clonando repositorio canónico de dotfiles rf-dotfiles en $RF_DOTFILES_DIR..."
+  CHANGES=$((CHANGES + 1))
+  if [[ "$DRY_RUN" == false ]]; then
+    git clone https://github.com/robert-flo/rf-dotfiles.git "$RF_DOTFILES_DIR"
+    chown -R "$INVOKING_USER:wheel" "$RF_DOTFILES_DIR"
+    chmod -R g+rwX "$RF_DOTFILES_DIR"
+    chmod g+s "$RF_DOTFILES_DIR"
+    git -C "$RF_DOTFILES_DIR" config core.fileMode false
+  fi
+else
+  if [[ "$DRY_RUN" == false ]]; then
+    sudo -u "$INVOKING_USER" git -C "$RF_DOTFILES_DIR" pull --ff-only origin master >/dev/null 2>&1 || true
+  fi
+  log_ok "[✓] ya el repositorio compartido de dotfiles /z/rf-dotfiles está sincronizado."
+fi
+
 # Watchers de permisos y unidades systemd
 for bin_f in fix_shared_dir_perms.sh z-perms_watcher.sh z-drive-perms_watcher.sh android-sdk-perms_watcher.sh android-projects-perms_watcher.sh; do
   install_sys_file "/usr/local/bin/${bin_f}" "0755" "root:root"
@@ -830,32 +849,52 @@ install_sys_file "/etc/udev/rules.d/99-almacen-btrfs.rules" "0644" "root:root"
 echo ""
 log_info "=== [Capa 03] Paquetes [omarchy-personal], Toolchain Global y Entorno Android ==="
 
-PERSONAL_PKGS=(
-  herdr
-  ravn-trio
-  ravn-webapps
-  ravn-omarchy-overlay
-  ravn-sessionizer
-  ravn-git-bare-clone
-  ravn-home-common
-  ravn-home-niri
-)
+# Asegurar chezmoi y jq para la orquestación y parseo SSoT
+for bpkg in chezmoi jq; do
+  if ! pacman -Qi "$bpkg" >/dev/null 2>&1; then
+    log_change "[CAMBIO] Instalando bootstrap $bpkg vía pacman..."
+    CHANGES=$((CHANGES + 1))
+    run pacman -S --needed --noconfirm "$bpkg"
+  fi
+done
 
-OFFICIAL_PKGS=(
-  base-devel clang cmake ninja rust go pnpm
-  jdk21-openjdk jdk17-openjdk android-tools android-udev kotlin gradle
-  python-evdev python-pyudev python-gobject python-cairo
-  inotify-tools age rclone fuse3 git-delta sassc
-  brave-origin-bin zen-browser-bin
-  ghostty kitty alacritty zsh fish yazi atuin fastfetch zed mission-center thunderbird
-  quickshell qt6-base qt6-declarative qt6-svg qt6-wayland qt6-5compat
-  qt6-lottie qt6-location qt6-positioning qt6-tools maplibre-native-qt qtkeychain-qt6
-  vulkan-headers ttf-material-symbols-variable matugen awww brightnessctl ddcutil
-  imagemagick xdg-terminal-exec wl-clipboard slurp grim gpu-screen-recorder ffmpeg
-  libpulse hyprpicker flatpak waybar fuzzel mako swaybg swaylock xwayland-satellite
-  xdg-desktop-portal-gnome polkit-gnome playerctl cliphist libqalculate wlsunset
-  gtk-layer-shell cava ttf-ibm-plex ttf-ibmplex-mono-nerd
-)
+# Cargar manifiesto Single Source of Truth desde /z/rf-dotfiles/.chezmoidata/packages.json
+CHEZMOI_DATA="/z/rf-dotfiles/.chezmoidata/packages.json"
+if [[ -f "$CHEZMOI_DATA" ]] && command -v jq >/dev/null 2>&1; then
+  mapfile -t OFFICIAL_PKGS < <(jq -r '.packages.official[]' "$CHEZMOI_DATA")
+  mapfile -t PERSONAL_PKGS < <(jq -r '.packages.personal[]' "$CHEZMOI_DATA")
+  mapfile -t AUR_PKGS < <(jq -r '.packages.aur[]' "$CHEZMOI_DATA")
+else
+  PERSONAL_PKGS=(
+    herdr
+    ravn-trio
+    ravn-webapps
+    ravn-omarchy-overlay
+    ravn-sessionizer
+    ravn-git-bare-clone
+    ravn-home-common
+    ravn-home-niri
+  )
+  OFFICIAL_PKGS=(
+    base-devel clang cmake ninja rust go pnpm
+    jdk21-openjdk jdk17-openjdk android-tools android-udev kotlin gradle
+    python-evdev python-pyudev python-gobject python-cairo
+    inotify-tools age rclone fuse3 git-delta sassc
+    brave-origin-bin zen-browser-bin
+    ghostty kitty alacritty zsh fish yazi atuin fastfetch zed mission-center thunderbird
+    quickshell qt6-base qt6-declarative qt6-svg qt6-wayland qt6-5compat
+    qt6-lottie qt6-location qt6-positioning qt6-tools maplibre-native-qt qtkeychain-qt6
+    vulkan-headers ttf-material-symbols-variable matugen awww brightnessctl ddcutil
+    imagemagick xdg-terminal-exec wl-clipboard slurp grim gpu-screen-recorder ffmpeg
+    libpulse hyprpicker flatpak waybar fuzzel mako swaybg swaylock xwayland-satellite
+    xdg-desktop-portal-gnome polkit-gnome playerctl cliphist libqalculate wlsunset
+    gtk-layer-shell cava ttf-ibm-plex ttf-ibmplex-mono-nerd chezmoi jq
+  )
+  AUR_PKGS=(
+    qt6-m3shapes-git libcava ttf-lxgw-wenkai-screen mpvpaper-git dotbare
+    android-studio-canary google-chrome google-cloud-cli firebase-tools-bin
+  )
+fi
 
 MISSING_PKGS=()
 for pkg in "${PERSONAL_PKGS[@]}" "${OFFICIAL_PKGS[@]}"; do
@@ -1135,25 +1174,57 @@ else
   log_ok "[✓] ya Greetd (Noctalia Greeter) está habilitado como Display Manager por defecto."
 fi
 
-# 4.6 Inicialización e Idempotencia de Dotfiles de Clavis (niri y niri-test)
+# 4.6 Despliegue Unificado de Dotfiles vía Chezmoi (Single Source of Truth)
+DOTFILES_USERS=("$INVOKING_USER" niri niri-test omarchy-test nyxuri nyxuri-test)
+for du in "${DOTFILES_USERS[@]}"; do
+  if id "$du" >/dev/null 2>&1; then
+    du_home="$(getent passwd "$du" | cut -d: -f6)"
+    if [[ -d "$du_home" && -d "/z/rf-dotfiles" ]]; then
+      raw_diff="$(sudo -u "$du" -H chezmoi diff --source=/z/rf-dotfiles 2>/dev/null || true)"
+      diff_count=$(echo "$raw_diff" | grep -c '^diff ' || true)
+      diff_count="$(echo "$diff_count" | tr -dc '0-9')"
+      diff_count="${diff_count:-0}"
+      if [[ "$DRY_RUN" == true ]]; then
+        if [[ "$diff_count" -gt 0 ]]; then
+          log_change "[CAMBIO] [DRY-RUN] Usuario '$du' tiene $diff_count archivos con diferencias pendientes en chezmoi."
+          CHANGES=$((CHANGES + 1))
+        else
+          log_ok "[✓] ya los dotfiles de '$du' están sincronizados con Chezmoi."
+        fi
+      else
+        if [[ "$diff_count" -gt 0 || ! -f "$du_home/.config/lazygit/config.yml" ]]; then
+          log_change "[CAMBIO] Convergiendo dotfiles vía Chezmoi para '$du'..."
+          CHANGES=$((CHANGES + 1))
+          sudo -u "$du" -H chezmoi apply --source=/z/rf-dotfiles --force || true
+        else
+          log_ok "[✓] ya los dotfiles de '$du' están sincronizados con /z/rf-dotfiles."
+        fi
+      fi
+    fi
+  fi
+done
+
+# Garantizar layout flotante en Workspace 1 para perfiles Omarchy (habilita dock en Omarchy 4.6)
+for om_u in "$INVOKING_USER" omarchy-test; do
+  if id "$om_u" >/dev/null 2>&1; then
+    om_home="$(getent passwd "$om_u" | cut -d: -f6)"
+    layout_file="$om_home/.local/state/omarchy/workspace-layouts/1.lua"
+    if [[ ! -f "$layout_file" ]]; then
+      log_change "[CAMBIO] Configurando workspace 1 como flotante (dock Omarchy 4.6) para '$om_u'..."
+      CHANGES=$((CHANGES + 1))
+      if [[ "$DRY_RUN" == false ]]; then
+        mkdir -p "$(dirname "$layout_file")"
+        echo 'o.workspace_mode({ workspace = "1", mode = "floating" })' > "$layout_file"
+        chown -R "$om_u:$om_u" "$om_home/.local/state/omarchy"
+      fi
+    fi
+  fi
+done
+
 for clavis_u in niri niri-test; do
   if id "$clavis_u" >/dev/null 2>&1; then
     u_home="$(getent passwd "$clavis_u" | cut -d: -f6)"
     u_uid="$(id -u "$clavis_u")"
-
-    if [[ ! -d "$u_home/.cfg" && ! -f "$u_home/.config/niri/config.kdl" ]]; then
-      log_change "[CAMBIO] Inicializando dotfiles de Clavis (robert-flo/niri-dotfiles) en '$clavis_u'..."
-      CHANGES=$((CHANGES + 1))
-      if [[ "$DRY_RUN" == false ]]; then
-        sudo -u "$clavis_u" env HOME="$u_home" bash -c '
-          git clone --bare https://github.com/robert-flo/niri-dotfiles.git "$HOME/.cfg"
-          git --git-dir="$HOME/.cfg" --work-tree="$HOME" config status.showUntrackedFiles no
-          git --git-dir="$HOME/.cfg" --work-tree="$HOME" checkout -f
-        ' || true
-      fi
-    else
-      log_ok "[✓] ya el usuario '$clavis_u' cuenta con su árbol de dotfiles de Clavis."
-    fi
 
     # Adaptación de rutas absolutas para usuarios distintos de /home/niri (ej. niri-test)
     if [[ "$u_home" != "/home/niri" && -f "$u_home/.config/clavis/config.json" ]]; then
