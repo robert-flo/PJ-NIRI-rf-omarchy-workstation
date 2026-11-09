@@ -219,8 +219,18 @@ fi
 
 PASS_DESKTOP_HASH=""
 PASS_VOLATILE_HASH=""
+resp_pass=""
 
-if [[ "$DRY_RUN" == false && "$NON_INTERACTIVE" == false && -t 0 ]]; then
+# Comprobar si existen cuentas no inicializadas o bloqueadas ('L' o sin contraseña)
+NEED_PASSWD_SETUP=false
+for chk_u in "${WORKSTATION_USERS[@]}" guest sandbox; do
+  if ! id "$chk_u" >/dev/null 2>&1 || [[ "$(passwd -S "$chk_u" 2>/dev/null | awk '{print $2}')" != "P" ]]; then
+    NEED_PASSWD_SETUP=true
+    break
+  fi
+done
+
+if [[ "$DRY_RUN" == false && "$NON_INTERACTIVE" == false && "$NEED_PASSWD_SETUP" == true && -t 0 ]]; then
   echo ""
   echo "=========================================================================="
   echo "           Configuración de Cuentas y Contraseñas de la Estación          "
@@ -255,6 +265,8 @@ if [[ "$DRY_RUN" == false && "$NON_INTERACTIVE" == false && -t 0 ]]; then
       fi
     fi
   fi
+elif [[ "$NEED_PASSWD_SETUP" == false ]]; then
+  log_ok "[✓] ya todas las cuentas cuentan con contraseña activa configurada."
 fi
 
 # Fallback por defecto: si no se ingresó contraseña interactiva, usar la del admin para que no queden bloqueadas
