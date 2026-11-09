@@ -43,6 +43,12 @@ WORKSPACE_DIR="${OMARCHY_WORKSPACE_DIR:-${ZROOT}/pj-omarchy}"
 DEV_DIR="${DEV_DIR:-${ZROOT}/fo-omarchy}"
 PACMAN_CONF="${PACMAN_CONF:-/etc/pacman.conf}"
 PACMAN_D="${PACMAN_D:-/etc/pacman.d}"
+SUDOERS_D="${SUDOERS_D:-/etc/sudoers.d}"
+FORKHUB_SYS_DIR="${FORKHUB_CONF_DIR:-/etc/forkhub/repos.d}"
+FORKHUB_BIN="${ONBOARD_SCRIPT_DIR}/../forkhub/forkhub"
+FORKHUB_REPO_CONFS="${ONBOARD_SCRIPT_DIR}/../forkhub/repos.d"
+SECRETS_UNLOCK_BIN="${ONBOARD_SCRIPT_DIR}/../secrets/desbloquear-secretos.sh"
+SKIP_FORK_SYNC="${SKIP_FORK_SYNC:-false}"
 
 ROLE=""
 DRY_RUN=false
@@ -150,6 +156,7 @@ Opciones Adicionales:
   --users "<u1 u2...>"  Lista adicional de usuarios a verificar/aprovisionar
                         - En PADRE: verifica existencia y pertenencia al grupo wheel
                         - En HIJA: aprovisiona el entorno de cada usuario con omarchy provision
+  --skip-fork-sync      Omite la auditoría y sincronización previa de forks contra upstream
   -n, --dry-run         Simulación: audita y muestra acciones sin modificar el sistema
   -h, --help            Muestra esta ayuda
 
@@ -264,6 +271,10 @@ while [[ $# -gt 0 ]]; do
       read -r -a EXTRA_USERS <<< "$2"
       shift 2
       ;;
+    --skip-fork-sync)
+      SKIP_FORK_SYNC=true
+      shift
+      ;;
     -n|--dry-run)
       DRY_RUN=true
       shift
@@ -358,10 +369,104 @@ if [[ "$DRY_RUN" == false && $EUID -ne 0 ]]; then
 fi
 
 # ------------------------------------------------------------------------------
+# ETAPA 0: Pre-Flight (Sudo sin contraseña agnóstico, Forkhub y Sync Upstream)
+# ------------------------------------------------------------------------------
+echo ""
+log_info "=== [Etapa 0/4] Pre-Flight: Sudo sin Contraseña, Flota y Forks Upstream ==="
+
+# 0.1 Auto-provisión de sudo sin contraseña (NOPASSWD + verifypw = any) para UNIQUE_USERS
+for u in "${UNIQUE_USERS[@]}"; do
+  SUDO_TARGET="${SUDOERS_D}/04_${u}"
+  TMP_SUDO="$(mktemp "${TMPDIR:-/tmp}/sudoers-04-${u}.XXXXXX")"
+  CLEANUP_FILES+=("$TMP_SUDO")
+  printf "%s\n" "${u} ALL=(ALL) NOPASSWD: ALL" "Defaults:${u} verifypw = any" > "$TMP_SUDO"
+
+  if [[ -r "$SUDO_TARGET" ]] && cmp -s "$TMP_SUDO" "$SUDO_TARGET"; then
+    log_ok "[✓] ya el usuario '$u' cuenta con sudo sin contraseña en $SUDO_TARGET."
+  else
+    log_change "[CAMBIO] Configurando sudo sin contraseña para '$u' en $SUDO_TARGET..."
+    CHANGES=$((CHANGES + 1))
+    if [[ "$DRY_RUN" == true ]]; then
+      run install -o root -g root -m 0440 "$TMP_SUDO" "$SUDO_TARGET"
+    else
+      mkdir -p "$SUDOERS_D"
+      visudo -cf "$TMP_SUDO" >/dev/null
+      install -o root -g root -m 0440 "$TMP_SUDO" "$SUDO_TARGET"
+    fi
+  fi
+done
+
+# 0.2 Despliegue declarativo de /etc/forkhub/repos.d/*.conf
+if [[ -d "$FORKHUB_REPO_CONFS" ]]; then
+  shopt -s nullglob
+  fk_confs=("$FORKHUB_REPO_CONFS"/*.conf)
+  shopt -u nullglob
+
+  fk_drift=false
+  for fc in "${fk_confs[@]}"; do
+    dest_fc="${FORKHUB_SYS_DIR}/$(basename "$fc")"
+    if [[ ! -f "$dest_fc" ]] || ! cmp -s "$fc" "$dest_fc"; then
+      fk_drift=true
+      break
+    fi
+  done
+
+  if [[ "$fk_drift" == false ]]; then
+    log_ok "[✓] ya las definiciones de flota en $FORKHUB_SYS_DIR están actualizadas."
+  else
+    log_change "[CAMBIO] Sincronizando definiciones de flota en $FORKHUB_SYS_DIR..."
+    CHANGES=$((CHANGES + 1))
+    if [[ "$DRY_RUN" == true ]]; then
+      run install -d -o root -g wheel -m 0775 "$FORKHUB_SYS_DIR"
+      run cp -f "$FORKHUB_REPO_CONFS/"*.conf "$FORKHUB_SYS_DIR/"
+    else
+      install -d -o root -g wheel -m 0775 "$FORKHUB_SYS_DIR"
+      for fc in "${fk_confs[@]}"; do
+        dest_fc="${FORKHUB_SYS_DIR}/$(basename "$fc")"
+        if [[ ! -f "$dest_fc" ]] || ! cmp -s "$fc" "$dest_fc"; then
+          install -o root -g wheel -m 0664 "$fc" "$dest_fc"
+        fi
+      done
+    fi
+  fi
+fi
+
+# 0.3 Auditoría y sincronización previa de forks contra upstream
+if [[ "$SKIP_FORK_SYNC" == true ]]; then
+  log_info "Omitiendo auditoría y sincronización previa de forks (--skip-fork-sync)."
+elif [[ "$DRY_RUN" == true ]]; then
+  log_info "[DRY-RUN] Se auditarían y sincronizarían los forks contra upstream mediante forkhub upstream y forkhub sync-upstream --all."
+elif [[ -x "$FORKHUB_BIN" ]] && command -v gh >/dev/null 2>&1; then
+  as_invoker() {
+    if [[ $EUID -eq 0 && "$INVOKING_USER" != "root" ]]; then
+      sudo -u "$INVOKING_USER" env HOME="$USER_HOME" FORKHUB_CONF_DIR="$FORKHUB_SYS_DIR" "$@"
+    else
+      env FORKHUB_CONF_DIR="$FORKHUB_SYS_DIR" "$@"
+    fi
+  }
+
+  if ! as_invoker gh auth status >/dev/null 2>&1; then
+    if [[ -t 0 && -x "$SECRETS_UNLOCK_BIN" ]]; then
+      log_info "Sesión de GitHub CLI no detectada para '$INVOKING_USER'. Ejecutando desbloqueo de secretos (age)..."
+      as_invoker bash "$SECRETS_UNLOCK_BIN" || true
+    fi
+  fi
+
+  if as_invoker gh auth status >/dev/null 2>&1; then
+    log_info "Auditando y sincronizando forks contra upstream antes de la instalación..."
+    as_invoker "$FORKHUB_BIN" upstream || true
+    as_invoker "$FORKHUB_BIN" sync-upstream --all || true
+    log_ok "[✓] ya la flota de forks fue verificada y sincronizada contra upstream."
+  else
+    log_info "GitHub CLI no autenticado para '$INVOKING_USER'; se omite sincronización previa de forks contra upstream."
+  fi
+fi
+
+# ------------------------------------------------------------------------------
 # ETAPA 1: Pasos Comunes (Paquetes base, /z, GPG, Drop-in pacman y Hook)
 # ------------------------------------------------------------------------------
 echo ""
-log_info "=== [Etapa 1/3] Configuración Criptográfica, Almacenamiento y Pacman ==="
+log_info "=== [Etapa 1/4] Configuración Criptográfica, Almacenamiento y Pacman ==="
 
 # 1.1 Asegurar paquetes base del sistema (acl y git)
 if pacman -Q acl git >/dev/null 2>&1; then
@@ -613,7 +718,7 @@ fi
 # ------------------------------------------------------------------------------
 if [[ "$ROLE" == "padre" ]]; then
   echo ""
-  log_info "=== [Etapa 2/3] Configuración de Estación de Desarrollo (Modo PADRE) ==="
+  log_info "=== [Etapa 2/4] Configuración de Estación de Desarrollo (Modo PADRE) ==="
 
   # 2.1 Justificación canónica de omarchy update
   log_info "PADRE no corre 'omarchy update': el par -dev viene de $DEV_DIR vía 'omarchy dev link' y un update desatendido pisaría el código en vivo; actualizá a mano con 'omarchy update' cuando el árbol esté limpio."
@@ -911,7 +1016,7 @@ if [[ "$ROLE" == "padre" ]]; then
 
 else
   echo ""
-  log_info "=== [Etapa 2/3] Configuración de Máquina Cliente (Modo HIJA) ==="
+  log_info "=== [Etapa 2/4] Configuración de Máquina Cliente (Modo HIJA) ==="
 
   # 2.1 Actualización de distribución
   if command -v omarchy >/dev/null 2>&1; then
@@ -970,7 +1075,7 @@ fi
 # ETAPA 3: Verificación Final del Sistema
 # ------------------------------------------------------------------------------
 echo ""
-log_info "=== [Etapa 3/3] Verificación del Estado del Sistema ==="
+log_info "=== [Etapa 3/4] Verificación del Estado del Sistema ==="
 if [[ "$DRY_RUN" == true ]]; then
   log_info "[DRY-RUN] En ejecución real se auditarán: paquetes omarchy, disponibilidad del repositorio [omarchy-personal] y omarchy dev status."
 else
