@@ -5,8 +5,8 @@
 # Despliega y reconcilia de forma 100% idempotente todas las capas de la
 # estación de trabajo (PJ-NIRI-rf-omarchy-workstation):
 #   - Capa 01: Sudoers infalible, Fix Intel i915 (SAGV), /etc/skel, Usuarios
-#              (niri, sura, nyxuri, nyxuri-test, nyxuri-legacy, guest, sandbox),
-#              SDDM Catppuccin Mocha (sin autologin).
+#              (niri, niri-test, nyxuri, nyxuri-test, nyxuri-legacy, omarchy-test,
+#               guest, sandbox), SDDM Catppuccin Mocha (sin autologin).
 #   - Capa 02: Almacenamiento compartido (/z, /zt, /z-drive), Wallpapers,
 #              watchers de permisos y suite declarativa synchub + rclone.
 #   - Capa 03: Paquetes [omarchy-personal] (ravn-*, herdr), Toolchain global
@@ -190,13 +190,61 @@ if ! getent group adbusers >/dev/null 2>&1; then
   run groupadd -f adbusers
 fi
 
-WORKSTATION_USERS=("niri" "sura" "niri-test" "nyxuri" "nyxuri-test" "nyxuri-legacy")
+WORKSTATION_USERS=("niri" "niri-test" "nyxuri" "nyxuri-test" "nyxuri-legacy" "omarchy-test")
 REQ_GROUPS="wheel,audio,input,video,kvm,storage,render,adbusers"
 
-# Hash de contraseña del administrador para desbloquear cuentas nuevas automáticamente en SDDM
+# Selección interactiva y gestión de contraseñas de usuarios de la estación
 ADMIN_HASH=""
 if [[ $EUID -eq 0 ]]; then
   ADMIN_HASH="$(awk -F: -v u="$INVOKING_USER" '$1 == u {print $2}' /etc/shadow 2>/dev/null || true)"
+fi
+
+PASS_DESKTOP_HASH=""
+PASS_VOLATILE_HASH=""
+
+if [[ "$DRY_RUN" == false && -t 0 ]]; then
+  echo ""
+  echo "=========================================================================="
+  echo "           Configuración de Cuentas y Contraseñas de la Estación          "
+  echo "=========================================================================="
+  echo "Cuentas estándar: ${WORKSTATION_USERS[*]}"
+  echo "Cuentas volátiles / amnésicas: guest sandbox"
+  echo ""
+  read -r -p "¿Deseas configurar contraseñas interactivamente para las cuentas creadas? [s/N]: " resp_pass
+  if [[ "$resp_pass" =~ ^[sSyY] ]]; then
+    read -r -s -p "Introduce contraseña para perfiles de escritorio (${WORKSTATION_USERS[*]}): " p_desk
+    echo ""
+    read -r -s -p "Confirma contraseña para perfiles de escritorio: " p_desk2
+    echo ""
+    if [[ -n "$p_desk" && "$p_desk" == "$p_desk2" ]]; then
+      PASS_DESKTOP_HASH="$(openssl passwd -6 "$p_desk")"
+      log_ok "[✓] Contraseña asignada para perfiles de escritorio estándar."
+    else
+      log_warn "[!] Las contraseñas no coinciden o están vacías; se usará la clave de '$INVOKING_USER' como fallback."
+    fi
+
+    echo ""
+    read -r -s -p "Introduce contraseña para perfiles amnésicos/volátiles (guest, sandbox) [Enter para usar la misma]: " p_vol
+    echo ""
+    if [[ -n "$p_vol" ]]; then
+      read -r -s -p "Confirma contraseña para perfiles amnésicos/volátiles: " p_vol2
+      echo ""
+      if [[ "$p_vol" == "$p_vol2" ]]; then
+        PASS_VOLATILE_HASH="$(openssl passwd -6 "$p_vol")"
+        log_ok "[✓] Contraseña diferenciada asignada para perfiles volátiles."
+      else
+        log_warn "[!] Las contraseñas de volátiles no coinciden; se usará la de escritorio."
+      fi
+    fi
+  fi
+fi
+
+# Fallback por defecto: si no se ingresó contraseña interactiva, usar la del admin para que no queden bloqueadas
+if [[ -z "$PASS_DESKTOP_HASH" ]]; then
+  PASS_DESKTOP_HASH="$ADMIN_HASH"
+fi
+if [[ -z "$PASS_VOLATILE_HASH" ]]; then
+  PASS_VOLATILE_HASH="$PASS_DESKTOP_HASH"
 fi
 
 for wu in "${WORKSTATION_USERS[@]}"; do
@@ -214,13 +262,13 @@ for wu in "${WORKSTATION_USERS[@]}"; do
     done
   fi
 
-  # Desbloquear cuenta si está bloqueada ('L' o '!' en shadow) copiando el hash del admin
-  if [[ "$DRY_RUN" == false && -n "$ADMIN_HASH" && "$ADMIN_HASH" != "!"* && "$ADMIN_HASH" != "*" ]]; then
+  # Desbloquear cuenta si está bloqueada ('L' o '!' en shadow) o aplicar el hash elegido
+  if [[ "$DRY_RUN" == false && -n "$PASS_DESKTOP_HASH" && "$PASS_DESKTOP_HASH" != "!"* && "$PASS_DESKTOP_HASH" != "*" ]]; then
     cur_status="$(passwd -S "$wu" 2>/dev/null | awk '{print $2}' || echo "")"
-    if [[ "$cur_status" != "P" ]]; then
-      log_change "[CAMBIO] Desbloqueando cuenta '$wu' para login en SDDM (misma clave que '$INVOKING_USER')..."
+    if [[ "$cur_status" != "P" || -n "$resp_pass" ]]; then
+      log_change "[CAMBIO] Estableciendo contraseña y desbloqueando cuenta '$wu' en SDDM..."
       CHANGES=$((CHANGES + 1))
-      usermod -p "$ADMIN_HASH" "$wu"
+      usermod -p "$PASS_DESKTOP_HASH" "$wu"
     fi
   fi
 
@@ -260,6 +308,18 @@ if ! id sandbox >/dev/null 2>&1; then
   run useradd -u 1008 -m -s /bin/bash -G render,video,audio,input,users sandbox || true
 fi
 
+# Desbloquear y asignar contraseña para guest y sandbox
+for vol_u in guest sandbox; do
+  if id "$vol_u" >/dev/null 2>&1 && [[ "$DRY_RUN" == false && -n "$PASS_VOLATILE_HASH" && "$PASS_VOLATILE_HASH" != "!"* && "$PASS_VOLATILE_HASH" != "*" ]]; then
+    cur_vol_status="$(passwd -S "$vol_u" 2>/dev/null | awk '{print $2}' || echo "")"
+    if [[ "$cur_vol_status" != "P" || -n "$resp_pass" ]]; then
+      log_change "[CAMBIO] Estableciendo contraseña y desbloqueando cuenta volátil '$vol_u' en SDDM..."
+      CHANGES=$((CHANGES + 1))
+      usermod -p "$PASS_VOLATILE_HASH" "$vol_u"
+    fi
+  fi
+done
+
 # 1.5 SDDM (Catppuccin Mocha y desactivación de autologin.conf)
 if [[ -f /etc/sddm.conf.d/autologin.conf ]]; then
   log_change "[CAMBIO] Moviendo /etc/sddm.conf.d/autologin.conf a /etc/sddm.conf.d-disabled/..."
@@ -277,9 +337,18 @@ if [[ ! -d /usr/share/sddm/themes/catppuccin-mocha-mauve ]]; then
   CHANGES=$((CHANGES + 1))
   if [[ "$DRY_RUN" == false ]]; then
     tmp_sddm="$(mktemp -d)"
-    if git clone --depth 1 https://github.com/catppuccin/sddm.git "$tmp_sddm/sddm" 2>/dev/null; then
-      mkdir -p /usr/share/sddm/themes
-      cp -r "$tmp_sddm/sddm/src/catppuccin-mocha-mauve" /usr/share/sddm/themes/
+    theme_zip="$tmp_sddm/theme.zip"
+    if curl -sSL "https://github.com/catppuccin/sddm/releases/download/v1.1.2/catppuccin-mocha-mauve-sddm.zip" -o "$theme_zip" 2>/dev/null; then
+      mkdir -p /usr/share/sddm/themes/catppuccin-mocha-mauve
+      unzip -q -o "$theme_zip" -d "$tmp_sddm/extracted"
+      if [[ -d "$tmp_sddm/extracted/catppuccin-mocha-mauve" ]]; then
+        cp -r "$tmp_sddm/extracted/catppuccin-mocha-mauve"/* /usr/share/sddm/themes/catppuccin-mocha-mauve/
+      else
+        cp -r "$tmp_sddm/extracted"/* /usr/share/sddm/themes/catppuccin-mocha-mauve/
+      fi
+    elif git clone --depth 1 https://github.com/catppuccin/sddm.git "$tmp_sddm/sddm" 2>/dev/null; then
+      mkdir -p /usr/share/sddm/themes/catppuccin-mocha-mauve
+      cp -r "$tmp_sddm/sddm/src"/* /usr/share/sddm/themes/catppuccin-mocha-mauve/
     fi
     rm -rf "$tmp_sddm"
   fi
@@ -597,7 +666,7 @@ install_sys_file "/etc/polkit-1/rules.d/50-noctalia-greeter.rules" "0644" "root:
 install_sys_file "/usr/share/applications/top.imsyy.splayer_next.desktop" "0644" "root:root"
 
 # 4.6 Inicialización idempotente de Dotfiles en Usuarios Nuevos (solo si aún no están inicializados)
-for clavis_u in niri sura niri-test; do
+for clavis_u in niri niri-test; do
   if id "$clavis_u" >/dev/null 2>&1; then
     u_home="$(getent passwd "$clavis_u" | cut -d: -f6)"
     if [[ ! -d "$u_home/.cfg" && ! -f "$u_home/.config/niri/config.kdl" ]]; then
@@ -659,6 +728,25 @@ main()
     fi
   else
     log_ok "[✓] ya el usuario 'nyxuri-legacy' cuenta con su configuración estable."
+  fi
+fi
+
+if id omarchy-test >/dev/null 2>&1; then
+  ot_home="$(getent passwd omarchy-test | cut -d: -f6)"
+  if [[ ! -f "$ot_home/.config/hypr/hyprland.conf" ]]; then
+    log_change "[CAMBIO] Sembrando entorno default Omarchy Hyprland en 'omarchy-test'..."
+    CHANGES=$((CHANGES + 1))
+    if [[ "$DRY_RUN" == false ]]; then
+      mkdir -p "$ot_home/.config"
+      if [[ -d "$OMARCHY_PATH/config/hypr" ]]; then
+        cp -r "$OMARCHY_PATH/config/hypr" "$ot_home/.config/"
+      elif [[ -d "/home/$INVOKING_USER/.config/hypr" ]]; then
+        cp -r "/home/$INVOKING_USER/.config/hypr" "$ot_home/.config/"
+      fi
+      chown -R omarchy-test:omarchy-test "$ot_home"
+    fi
+  else
+    log_ok "[✓] ya el usuario 'omarchy-test' cuenta con su configuración de Hyprland."
   fi
 fi
 
