@@ -67,28 +67,33 @@ test-idempotence:
 	sudo ./scripts/omarchy-onboarding/ci-idempotencia.sh
 
 doctor:
-	@echo -e "$(BOLD)$(CYAN)==> [1/6] Diagnosticando Nyxuri Shell & Plugins...$(RESET)"
+	@echo -e "$(BOLD)$(CYAN)==> [1/7] Diagnosticando Nyxuri Shell & Plugins...$(RESET)"
 	@sudo -u nyxuri nyxuri doctor 2>/dev/null || echo -e "  $(YELLOW)[!] nyxuri doctor no disponible o falló$(RESET)"
 	@echo ""
-	@echo -e "$(BOLD)$(CYAN)==> [2/6] Diagnosticando Clavis Shell & Key-CLI...$(RESET)"
+	@echo -e "$(BOLD)$(CYAN)==> [2/7] Diagnosticando Clavis Shell & Key-CLI...$(RESET)"
 	@key doctor 2>/dev/null || sudo key doctor 2>/dev/null || echo -e "  $(YELLOW)[!] key doctor no disponible$(RESET)"
 	@echo ""
-	@echo -e "$(BOLD)$(CYAN)==> [3/6] Verificando Display Manager y Sesiones Wayland...$(RESET)"
+	@echo -e "$(BOLD)$(CYAN)==> [3/7] Verificando Display Manager y Sesiones Wayland...$(RESET)"
 	@systemctl is-active --quiet greetd && echo -e "  $(GREEN)[✓] Greetd Display Manager: ACTIVO$(RESET)" || echo -e "  $(YELLOW)[!] Greetd no está activo$(RESET)"
 	@systemctl is-active --quiet sddm && echo -e "  $(GREEN)[✓] SDDM Display Manager: ACTIVO$(RESET)" || true
 	@echo "  Sesiones registradas en /usr/share/wayland-sessions:"
 	@ls -1 /usr/share/wayland-sessions 2>/dev/null | sed 's/^/    - /' || true
 	@echo ""
-	@echo -e "$(BOLD)$(CYAN)==> [4/6] Verificando Entorno Java y Android SDK...$(RESET)"
+	@echo -e "$(BOLD)$(CYAN)==> [4/7] Verificando Entorno Java y Android SDK...$(RESET)"
 	@echo "  Java default: $$(archlinux-java get 2>/dev/null || echo 'No detectado')"
 	@echo "  ADB version:  $$(adb version 2>/dev/null | head -n1 || echo 'No detectado')"
 	@echo "  ANDROID_HOME: $${ANDROID_HOME:-/opt/android-sdk}"
 	@echo ""
-	@echo -e "$(BOLD)$(CYAN)==> [5/6] Verificando Integridad de Sudoers y Permisos /z...$(RESET)"
+	@echo -e "$(BOLD)$(CYAN)==> [5/7] Verificando Integridad de Sudoers y Permisos /z...$(RESET)"
 	@sudo visudo -c >/dev/null 2>&1 && echo -e "  $(GREEN)[✓] Sudoers: Sintaxis íntegra (visudo -c OK)$(RESET)" || echo -e "  $(RED)[✗] Error en sintaxis de sudoers$(RESET)"
 	@getfacl /z 2>/dev/null | grep -q "default:group:wheel:rwx" && echo -e "  $(GREEN)[✓] Directorio /z: ACLs 2775 y herencia wheel activas$(RESET)" || echo -e "  $(YELLOW)[!] ACLs de /z incompletas$(RESET)"
 	@echo ""
-	@echo -e "$(BOLD)$(CYAN)==> [6/6] Verificando Timers del Sistema...$(RESET)"
+	@echo -e "$(BOLD)$(CYAN)==> [6/7] Verificando Dotfiles y Manifiesto de Paquetes SSoT (Chezmoi)...$(RESET)"
+	@[[ -d /z/rf-dotfiles/.git ]] && echo -e "  $(GREEN)[✓] Repositorio central /z/rf-dotfiles: ACTIVO ($$(git -C /z/rf-dotfiles branch --show-current))$(RESET)" || echo -e "  $(RED)[✗] /z/rf-dotfiles no existe o no es repositorio git$(RESET)"
+	@[[ -f /z/rf-dotfiles/.chezmoidata/packages.json ]] && echo -e "  $(GREEN)[✓] Manifiesto SSoT de paquetes: PRESENTE ($$(jq '.packages.official | length' /z/rf-dotfiles/.chezmoidata/packages.json) paquetes oficiales)$(RESET)" || echo -e "  $(RED)[✗] Manifiesto .chezmoidata/packages.json no encontrado$(RESET)"
+	@command -v chezmoi >/dev/null && echo -e "  $(GREEN)[✓] Chezmoi CLI: Instalado ($$(chezmoi --version | head -n1))$(RESET)" || echo -e "  $(RED)[✗] chezmoi CLI no encontrado$(RESET)"
+	@echo ""
+	@echo -e "$(BOLD)$(CYAN)==> [7/7] Verificando Timers del Sistema...$(RESET)"
 	@systemctl list-timers --no-pager | grep -E "forkhub|sync|niri|z-perms|android" || true
 
 sync-status:

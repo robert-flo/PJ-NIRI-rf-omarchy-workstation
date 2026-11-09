@@ -58,10 +58,10 @@ Este repositorio (`PJ-NIRI-rf-omarchy-workstation`) persigue una visión fundame
   - `nyxuri-legacy`: Entorno de escritorio bajo Nyxuri Stable (tag `v3.1.0` de upstream).
   - `guest`: Entorno amnésico volátil montado en RAM (`tmpfs` 8GB, destrucción inmediata al logout).
   - `sandbox`: Entorno amnésico desechable de alto rendimiento sobre Btrfs CoW (aceleración GPU nativa, rollback automático en 3 capas al arranque, login y logout).
-- Configuración de usuario de `niri`/`niri-test`: `robert-flo/niri-dotfiles` con dotbare.
-- Configuración de usuario de `nyxuri`/`nyxuri-test`: `robert-flo/PJ-NIRI-fo-nyxuri` (Edge).
+- Configuración unificada de dotfiles y manifiesto de paquetes: `robert-flo/rf-dotfiles` con **Chezmoi** (alojado en `/z/rf-dotfiles`, ver [[docs/adr/0003-chezmoi-unificacion-dotfiles-y-paquetes|ADR 0003]]).
+- Configuración de usuario de `nyxuri`/`nyxuri-test`: `robert-flo/PJ-NIRI-fo-nyxuri` (Edge) y dotfiles compartidos vía Chezmoi.
 - Configuración de usuario de `nyxuri-legacy`: `ech678/Nyxuri` tag `v3.1.0` (Estable).
-- Almacenamiento compartido multiusuario: `/z/` (`/z/nvims`, `/z/wallpaper-collection`, `/z/nyxuri`) con permisos `2775` (setgid + wheel) y ACLs por defecto.
+- Almacenamiento compartido multiusuario: `/z/` (`/z/rf-dotfiles`, `/z/nvims`, `/z/wallpaper-collection`, `/z/nyxuri`) con permisos `2775` (setgid + wheel) y ACLs por defecto.
 - Archivos de sistema (fuera de `$HOME`): copia exacta en `assets/system/<ruta absoluta>`. Si cambias uno en la máquina, actualiza su copia y la nota que lo explica (`07.4`).
 
 ### Protocolo de Wipe / Regeneración de Modificaciones en Usuarios
