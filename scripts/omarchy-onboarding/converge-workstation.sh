@@ -83,6 +83,7 @@ fi
 log_info()   { echo -e "${C_INFO}[INFO]${C_RESET} $*"; }
 log_ok()     { echo -e "${C_OK}$*${C_RESET}"; }
 log_change() { echo -e "${C_WARN}$*${C_RESET}"; }
+log_warn()   { echo -e "${C_WARN}[WARN]${C_RESET} $*" >&2; }
 log_err()    { echo -e "${C_ERR}[ERROR]${C_RESET} $*" >&2; }
 
 CHANGES=0
