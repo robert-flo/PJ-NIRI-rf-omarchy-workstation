@@ -21,11 +21,38 @@ Arquitectura integral por capas, diseño de sistemas y bootstrap completo para u
 
 Para poner en marcha la estación de trabajo de forma 100% reproducible y desatendida:
 
-### Opción A: Mediante `make` (Recomendada)
+### Opción A: Mediante `make` (Puerta de Entrada Canónica Recomendada)
+
+El `Makefile` centraliza el ciclo de vida completo de la estación de trabajo:
+
 ```bash
-make install          # Ejecuta la instalación integral completa (Modo PADRE + Capas 01 a 07)
-make audit            # Simula y audita todas las capas sin tocar el sistema (Dry-run)
-make doctor           # Diagnóstico del estado del sistema, Nyxuri, Clavis y Display Manager
+# --- Instalación y Despliegue ---
+make install          # Instalación integral completa en Modo PADRE (Full 4 Etapas + Capas 01 a 07)
+make install-hija     # Instalación integral completa en Modo HIJA (Cliente / Producción)
+make converge         # Aplica convergencia directa de capas 01-07 (Rápido, desatendido e idempotente)
+make audit            # Simula y audita todas las capas sin tocar el sistema (--dry-run)
+make test-idempotence # Valida inocuidad e idempotencia estricta en el sistema
+
+# --- Diagnóstico y Salud Unificada ---
+make doctor           # Diagnóstico en 6 fases: Nyxuri, Clavis/key, Display Manager, Java/Android, Sudoers y Timers
+make sync-status      # Dashboard en tiempo real de respaldos /z-drive, Google Drive y disco Btrfs
+
+# --- Gestión de Secretos (age) ---
+make secrets          # Desbloquea y aprovisiona secretos en memoria segura (/dev/shm) para todos los perfiles
+make lock-secrets     # Empaqueta y recifra las credenciales del sistema en scripts/secrets/secrets.tar.gz.age
+make test-secrets     # Prueba de verificación de descifrado sin desplegar
+
+# --- Flota de Forks (forkhub) ---
+make forks            # Dashboard de salud y estado local de los 15 repositorios de la flota
+make forks-audit      # Audita divergencias y commits contra upstreams oficiales vía GitHub API
+make forks-sync       # Sincroniza y mergea upstreams automáticamente respetando directiva ADR 0024
+
+# --- Sincronización y Respaldo ---
+make sync             # Dispara sincronización segura con escudos de protección activos (sync-all)
+
+# --- Sandbox Desechable (Btrfs) ---
+make sandbox-status   # Inspecciona subvolumen Btrfs y snapshot golden del usuario amnésico
+make sandbox-reset    # Rollback instantáneo a estado de fábrica (1 ms) para el usuario sandbox
 ```
 
 ### Opción B: Mediante script directo
