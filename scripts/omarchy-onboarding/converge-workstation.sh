@@ -1013,7 +1013,7 @@ else
 fi
 
 # Componentes de Shell Clavis: clavis-fish-theme y my_zsh_prompt
-clone_or_update_fork "clavis-fish-theme" "https://github.com/robert-flo/clavis-fish-theme.git" "personal" "https://github.com/StatIndet/clavis-fish-theme.git" || true
+clone_or_update_fork "clavis-fish-theme" "https://github.com/robert-flo/PJ-NIRI-fo-clavis-fish-theme.git" "personal" "https://github.com/StatIndet/clavis-fish-theme.git" || true
 if [[ ! -x /usr/local/bin/clavis-fish-theme ]]; then
   log_change "[CAMBIO] Compilando e instalando clavis-fish-theme desde $BUILD_DIR/clavis-fish-theme..."
   CHANGES=$((CHANGES + 1))
@@ -1028,7 +1028,7 @@ else
   log_ok "[✓] ya clavis-fish-theme está compilado e instalado en /usr/local/bin/clavis-fish-theme."
 fi
 
-clone_or_update_fork "my_zsh_prompt" "https://github.com/robert-flo/my_zsh_prompt.git" "personal" "https://github.com/StatIndet/my_zsh_prompt.git" || true
+clone_or_update_fork "my_zsh_prompt" "https://github.com/robert-flo/PJ-NIRI-fo-my_zsh_prompt.git" "personal" "https://github.com/StatIndet/my_zsh_prompt.git" || true
 if [[ ! -x /usr/local/bin/prompt ]]; then
   log_change "[CAMBIO] Compilando e instalando prompt desde $BUILD_DIR/my_zsh_prompt..."
   CHANGES=$((CHANGES + 1))
@@ -1084,10 +1084,12 @@ else
   log_ok "[✓] ya Greetd (Noctalia Greeter) está habilitado como Display Manager por defecto."
 fi
 
-# 4.6 Inicialización idempotente de Dotfiles en Usuarios Nuevos (solo si aún no están inicializados)
+# 4.6 Inicialización e Idempotencia de Dotfiles de Clavis (niri y niri-test)
 for clavis_u in niri niri-test; do
   if id "$clavis_u" >/dev/null 2>&1; then
     u_home="$(getent passwd "$clavis_u" | cut -d: -f6)"
+    u_uid="$(id -u "$clavis_u")"
+
     if [[ ! -d "$u_home/.cfg" && ! -f "$u_home/.config/niri/config.kdl" ]]; then
       log_change "[CAMBIO] Inicializando dotfiles de Clavis (robert-flo/niri-dotfiles) en '$clavis_u'..."
       CHANGES=$((CHANGES + 1))
@@ -1096,13 +1098,80 @@ for clavis_u in niri niri-test; do
           git clone --bare https://github.com/robert-flo/niri-dotfiles.git "$HOME/.cfg"
           git --git-dir="$HOME/.cfg" --work-tree="$HOME" config status.showUntrackedFiles no
           git --git-dir="$HOME/.cfg" --work-tree="$HOME" checkout -f
-          if [[ -x "$HOME/.local/bin/niri-dotfiles-postinstall" ]]; then
-            "$HOME/.local/bin/niri-dotfiles-postinstall" || true
-          fi
         ' || true
       fi
     else
-      log_ok "[✓] ya el usuario '$clavis_u' cuenta con sus dotfiles de Clavis."
+      log_ok "[✓] ya el usuario '$clavis_u' cuenta con su árbol de dotfiles de Clavis."
+    fi
+
+    # Adaptación de rutas absolutas para usuarios distintos de /home/niri (ej. niri-test)
+    if [[ "$u_home" != "/home/niri" && -f "$u_home/.config/clavis/config.json" ]]; then
+      if grep -q '/home/niri/' "$u_home/.config/clavis/config.json"; then
+        log_change "[CAMBIO] Adaptando rutas absolutas a $u_home en configs de '$clavis_u'..."
+        CHANGES=$((CHANGES + 1))
+        if [[ "$DRY_RUN" == false ]]; then
+          for f_adj in "$u_home/.config/clavis/config.json" "$u_home/.config/obsidian/obsidian.json" "$u_home/.config/environment.d/clavis-mpvpaper.conf"; do
+            [[ -f "$f_adj" ]] && sed -i "s|/home/niri/|$u_home/|g" "$f_adj"
+          done
+        fi
+      fi
+    fi
+
+    # Garantizar activación de servicios systemd user para Clavis en Niri
+    if [[ ! -e "$u_home/.config/systemd/user/niri.service.wants/clavis-shell.service" || ! -e "$u_home/.config/systemd/user/niri.service.wants/clavis-clipboard.service" ]]; then
+      log_change "[CAMBIO] Habilitando servicios systemd user (clavis-shell y clavis-clipboard) para '$clavis_u'..."
+      CHANGES=$((CHANGES + 1))
+      if [[ "$DRY_RUN" == false ]]; then
+        mkdir -p "$u_home/.config/systemd/user/niri.service.wants"
+        ln -sfn /usr/lib/systemd/user/clavis-shell.service "$u_home/.config/systemd/user/niri.service.wants/clavis-shell.service"
+        ln -sfn /usr/local/lib/systemd/user/clavis-clipboard.service "$u_home/.config/systemd/user/niri.service.wants/clavis-clipboard.service"
+        chown -R "$clavis_u:$clavis_u" "$u_home/.config/systemd"
+      fi
+    else
+      log_ok "[✓] ya los servicios systemd de Clavis están activos para '$clavis_u'."
+    fi
+
+    # Garantizar paleta Matugen (colors.json) según el modo ("light") y fondo configurado
+    if [[ ! -f "$u_home/.local/share/clavis/profiles/default/generated/clavis/colors.json" && -f "$u_home/.config/clavis/config.json" && -x /etc/xdg/quickshell/clavis/scripts/theme/generate_matugen_colors.sh ]]; then
+      log_change "[CAMBIO] Generando paleta de tema Matugen (colors.json) para '$clavis_u'..."
+      CHANGES=$((CHANGES + 1))
+      if [[ "$DRY_RUN" == false ]]; then
+        wp_path="$(grep -oP '"path":\s*"\K[^"]+' "$u_home/.config/clavis/config.json" | head -n1 || echo "")"
+        wp_mode="$(grep -oP '"mode":\s*"\K[^"]+' "$u_home/.config/clavis/config.json" | head -n1 || echo "light")"
+        if [[ -f "$wp_path" ]]; then
+          sudo -u "$clavis_u" env HOME="$u_home" /etc/xdg/quickshell/clavis/scripts/theme/generate_matugen_colors.sh \
+            --image "$wp_path" --mode "$wp_mode" \
+            --templates fcitx5_theme,fcitx5_panel,fcitx5_highlight,fcitx5_radio,fcitx5_arrow,clavis_fish,niri_focus_ring,btop,cava,kitty,yazi >/dev/null 2>&1 || true
+        fi
+      fi
+    else
+      log_ok "[✓] ya la paleta Matugen (colors.json) está generada para '$clavis_u'."
+    fi
+
+    # Generación dinámica de outputs.kdl si no existe (evita avisos en niri validate)
+    if [[ ! -f "$u_home/.config/niri/outputs.kdl" ]]; then
+      active_conn="$(for p in /sys/class/drm/card*-*/status; do if [[ "$(cat "$p" 2>/dev/null)" == "connected" ]]; then basename "$(dirname "$p")" | sed 's/^card[0-9]*-//'; break; fi; done)"
+      if [[ -n "$active_conn" ]]; then
+        log_change "[CAMBIO] Generando outputs.kdl ($active_conn) para '$clavis_u'..."
+        CHANGES=$((CHANGES + 1))
+        if [[ "$DRY_RUN" == false ]]; then
+          cat << EOF > "$u_home/.config/niri/outputs.kdl"
+output "$active_conn" {
+    mode "1920x1080@60.000"
+    scale 1.0
+}
+EOF
+          chown "$clavis_u:$clavis_u" "$u_home/.config/niri/outputs.kdl"
+        fi
+      fi
+    fi
+
+    # Aplicar gsettings (color-scheme, tema GTK y cursor) si el bus D-Bus de usuario está disponible
+    if [[ -S "/run/user/$u_uid/bus" && "$DRY_RUN" == false ]]; then
+      sudo -u "$clavis_u" env DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$u_uid/bus" gsettings set org.gnome.desktop.interface color-scheme 'prefer-light' 2>/dev/null || true
+      sudo -u "$clavis_u" env DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$u_uid/bus" gsettings set org.gnome.desktop.interface gtk-theme 'MacTahoe-Dark' 2>/dev/null || true
+      sudo -u "$clavis_u" env DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$u_uid/bus" gsettings set org.gnome.desktop.interface icon-theme 'MacTahoe-dark' 2>/dev/null || true
+      sudo -u "$clavis_u" env DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$u_uid/bus" gsettings set org.gnome.desktop.interface cursor-theme 'MacTahoe-dark' 2>/dev/null || true
     fi
   fi
 done
