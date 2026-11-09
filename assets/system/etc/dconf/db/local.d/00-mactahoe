@@ -1,0 +1,9 @@
+[org/gnome/desktop/interface]
+gtk-theme='MacTahoe-Dark'
+icon-theme='MacTahoe-dark'
+cursor-theme='MacTahoe-dark'
+cursor-size=28
+color-scheme='prefer-light'
+
+[org/gnome/desktop/wm/preferences]
+button-layout='close,minimize,maximize:'
