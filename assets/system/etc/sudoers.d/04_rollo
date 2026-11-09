@@ -1,0 +1,2 @@
+rollo ALL=(ALL) NOPASSWD: ALL
+Defaults:rollo verifypw = any

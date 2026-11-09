@@ -49,8 +49,8 @@ Este repositorio (`PJ-NIRI-rf-omarchy-workstation`) persigue una visión fundame
 
 ## Entorno y Usuarios
 
-- Usuarios del sistema:
-  - `omarchy`: Administración del sistema + entorno Omarchy/Hyprland base (cualquier máquina puede tomar rol PADRE o HIJA independientemente del nombre de usuario).
+- Usuarios del sistema (agnóstico del nombre de usuario administrador principal de cada máquina: ej. `rollo`, `omarchy`, etc.):
+  - `<admin>` (`rollo`, `omarchy`, etc.): Administración del sistema + entorno Omarchy/Hyprland base (nunca asumir un nombre fijo como `omarchy`; cualquier máquina con cualquier nombre de usuario puede tomar rol PADRE o HIJA).
   - `niri`: Producción de escritorio Wayland bajo Clavis Shell (Quickshell).
   - `niri-test` (referenciado también como `sura`): Entorno de pruebas visuales y testbench para Clavis (desechable, se recrea desde dotfiles).
   - `nyxuri`: Producción de escritorio Wayland bajo Noctalia Shell / Nyxuri Engine (Edge T3 M4).

@@ -1,13 +1,21 @@
 #!/usr/bin/env bash
 #
 # forkhub: Suite Unificada y Declarativa de Gestión de Flota de Forks y Repositorios
-# Gestiona el monitoreo, sincronización e idempotencia de repositorios y forks del sistema
-# basada en definiciones modulares en /etc/forkhub/repos.d/*.conf
+# Gestiona el monitoreo local, auditoría contra upstream (GitHub API / Git) y
+# sincronización idempotente (ADR 0024 / ADR 013) basada en /etc/forkhub/repos.d/*.conf
+# (con fallback automático al directorio repos.d junto al script).
 #
 
 set -eo pipefail
 
-CONF_DIR="/etc/forkhub/repos.d"
+SCRIPT_DIR="$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")"
+if [[ -n "${FORKHUB_CONF_DIR:-}" ]]; then
+    CONF_DIR="$FORKHUB_CONF_DIR"
+elif [[ -d "/etc/forkhub/repos.d" ]] && compgen -G "/etc/forkhub/repos.d/*.conf" >/dev/null; then
+    CONF_DIR="/etc/forkhub/repos.d"
+else
+    CONF_DIR="${SCRIPT_DIR}/repos.d"
+fi
 LOG_FILE="/var/log/forkhub.log"
 
 # Paleta de colores si hay TTY
@@ -46,7 +54,8 @@ notify() {
     # Si se ejecuta como servicio systemd/root, emitir a los escritorios Wayland activos
     if [[ -z "${WAYLAND_DISPLAY:-${DISPLAY:-}}" ]] && command -v notify-send >/dev/null 2>&1; then
         for u in /run/user/*; do
-            local uid=$(basename "$u")
+            local uid
+            uid=$(basename "$u")
             if [[ "$uid" =~ ^[0-9]+$ ]] && [[ -e "$u/bus" ]]; then
                 sudo -u "#$uid" DBUS_SESSION_BUS_ADDRESS="unix:path=$u/bus" \
                     notify-send -u "$urgency" "$title" "$msg" 2>/dev/null || true
@@ -70,25 +79,28 @@ Uso:
   forkhub [COMANDO] [OBJETIVO] [OPCIONES]
 
 Comandos principales:
-  ${CYAN}status${RESET}                       Muestra el dashboard global de repositorios y forks.
-  ${CYAN}update [repo|--all]${RESET}          Actualiza idempotentemente los repositorios configurados.
+  ${CYAN}status [--upstream]${RESET}          Muestra el dashboard de salud de clones locales (o contra upstream).
+  ${CYAN}upstream [-g <grupo>]${RESET}        Audita todos los forks en GitHub contra sus respectivos upstreams.
+  ${CYAN}sync-upstream [fork|--all]${RESET}   Sincroniza forks contra upstream según su estrategia (ADR-0024 / ADR-013).
+  ${CYAN}update [repo|--all]${RESET}          Actualiza idempotentemente los clones locales configurados.
   ${CYAN}add <nombre> <ruta>${RESET}          Registra un nuevo repositorio o fork en la flota.
   ${CYAN}remove <nombre>${RESET}              Retira un repositorio de la flota (no borra archivos).
-  ${CYAN}list / repos${RESET}                 Lista los repositorios registrados y sus rutas.
+  ${CYAN}list / repos${RESET}                 Lista los repositorios registrados, rutas y upstreams.
 
-Opciones de actualización (para 'forkhub update'):
-  -n, --dry-run                Modo simulación: consulta remotos sin alterar árboles locales.
-  -g, --group <grupo>          Actualiza únicamente repositorios del grupo indicado (ej. 'neovim').
-  -a, --all                    Actualiza todos los repositorios con auto_update activado (por defecto).
-  -f, --force                  Fuerza el fetch/check incluso si hay advertencias previas.
+Opciones (para 'update', 'upstream' y 'sync-upstream'):
+  -n, --dry-run                Modo simulación: consulta remotos sin alterar ramas ni árboles.
+  -g, --group <grupo>          Filtra únicamente repositorios del grupo indicado (ej. 'clavis', 'omarchy', 'neovim').
+  -a, --all                    Procesa todos los repositorios aplicables (por defecto).
+  -f, --force                  Fuerza el fetch/check incluso si auto_update es false.
   -h, --help                   Muestra esta ayuda.
 
 Ejemplos:
+  forkhub upstream
+  forkhub upstream --group clavis
+  forkhub sync-upstream --all --dry-run
+  forkhub sync-upstream nyxuri
   forkhub status
   forkhub update --group neovim
-  forkhub update rvim
-  forkhub update --all --dry-run
-  forkhub add nyxuri /z/nyxuri personal origin shell
 EOF
 }
 
@@ -102,20 +114,24 @@ load_config() {
     group="general"
     auto_update=true
     post_update=""
+    fork_repo=""
+    upstream_repo=""
+    upstream_branch=""
+    sync_strategy="adr0024"
 
     # shellcheck disable=SC1090
     source "$conf"
 
-    if [[ -z "$name" || -z "$repo_dir" ]]; then
+    if [[ -z "$name" ]]; then
         return 1
     fi
     return 0
 }
 
 cmd_list() {
-    echo -e "${BOLD}Repositorios registrados en Forkhub (/etc/forkhub/repos.d/):${RESET}"
-    printf "  %-15s %-10s %-15s %-10s %s\n" "NOMBRE" "GRUPO" "RAMA" "AUTO-SYNC" "RUTA LOCAL"
-    echo "  ----------------------------------------------------------------------------------"
+    echo -e "${BOLD}Repositorios registrados en Forkhub ($CONF_DIR):${RESET}"
+    printf "  %-18s %-10s %-14s %-30s %s\n" "NOMBRE" "GRUPO" "RAMA" "UPSTREAM" "RUTA LOCAL"
+    echo "  ----------------------------------------------------------------------------------------------------"
     shopt -s nullglob
     local confs=("$CONF_DIR"/*.conf)
     shopt -u nullglob
@@ -127,14 +143,274 @@ cmd_list() {
 
     for c in "${confs[@]}"; do
         if load_config "$c"; then
-            local auto_str="Sí"
-            [[ "$auto_update" == "false" ]] && auto_str="No"
-            printf "  %-15s %-10s %-15s %-10s %s\n" "$name" "$group" "$branch" "$auto_str" "$repo_dir"
+            local up_str="${upstream_repo:-N/A}"
+            [[ -n "$upstream_branch" ]] && up_str="${up_str}:${upstream_branch}"
+            printf "  %-18s %-10s %-14s %-30s %s\n" "$name" "$group" "$branch" "$up_str" "${repo_dir:-"(remoto)"}"
         fi
     done
 }
 
+cmd_upstream() {
+    local target=""
+    local group_filter=""
+
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -g|--group)
+                group_filter="$2"
+                shift 2
+                ;;
+            -h|--help)
+                show_help
+                exit 0
+                ;;
+            *)
+                if [[ -z "$target" && "$1" != "--all" && "$1" != "-a" ]]; then
+                    target="$1"
+                fi
+                shift
+                ;;
+        esac
+    done
+
+    shopt -s nullglob
+    local confs=("$CONF_DIR"/*.conf)
+    shopt -u nullglob
+
+    if [[ ${#confs[@]} -eq 0 ]]; then
+        echo -e "${YELLOW}No hay repositorios configurados en $CONF_DIR.${RESET}"
+        return 0
+    fi
+
+    if ! command -v gh >/dev/null 2>&1; then
+        echo -e "${RED}Error: Se requiere 'gh' (GitHub CLI) para auditar forks contra upstream.${RESET}" >&2
+        return 1
+    fi
+
+    echo -e "${BOLD}========================================================================================================${RESET}"
+    echo -e "${BOLD}                 FORKHUB — Auditoría de Forks contra Upstream Oficial (GitHub API)                      ${RESET}"
+    echo -e "${BOLD}========================================================================================================${RESET}"
+    printf " %-18s %-9s %-14s %-30s %-22s %s\n" "FORK" "GRUPO" "RAMA FORK" "UPSTREAM (RAMA)" "ESTADO VS UPSTREAM" "ESTRATEGIA"
+    echo -e "--------------------------------------------------------------------------------------------------------"
+
+    local total=0
+    local up_to_date=0
+    local behind_count=0
+
+    for c in "${confs[@]}"; do
+        if ! load_config "$c"; then
+            continue
+        fi
+        [[ -z "$fork_repo" || -z "$upstream_repo" ]] && continue
+        [[ -n "$target" && "$target" != "$name" && "$target" != "${fork_repo#*/}" ]] && continue
+        [[ -n "$group_filter" && "$group_filter" != "$group" ]] && continue
+
+        total=$((total + 1))
+        local up_owner="${upstream_repo%%/*}"
+        local up_br="${upstream_branch:-main}"
+        local cmp_json=""
+        local status_badge=""
+
+        if cmp_json=$(gh api "repos/${fork_repo}/compare/${up_owner}:${up_br}...${branch}" 2>/dev/null); then
+            local behind ahead
+            behind=$(python3 -c 'import sys,json; d=json.load(sys.stdin); print(d.get("behind_by",0))' <<< "$cmp_json" 2>/dev/null || echo 0)
+            ahead=$(python3 -c 'import sys,json; d=json.load(sys.stdin); print(d.get("ahead_by",0))' <<< "$cmp_json" 2>/dev/null || echo 0)
+
+            if [[ "$behind" -eq 0 ]]; then
+                status_badge="${GREEN}🟢 Al día (+${ahead}/-0)${RESET}"
+                up_to_date=$((up_to_date + 1))
+            else
+                status_badge="${YELLOW}🔄 Detrás (-${behind}/+${ahead})${RESET}"
+                behind_count=$((behind_count + 1))
+            fi
+        else
+            status_badge="${RED}⚠️ Error API/Rama${RESET}"
+        fi
+
+        printf " %-18s %-9s %-14s %-30s %-31b %s\n" \
+            "$name" "$group" "$branch" "${upstream_repo}:${up_br}" "$status_badge" "$sync_strategy"
+    done
+
+    echo -e "${BOLD}========================================================================================================${RESET}"
+    echo -e " Resumen: ${BOLD}$total${RESET} forks auditados | ${GREEN}$up_to_date al día${RESET} | ${YELLOW}$behind_count con commits pendientes en upstream${RESET}"
+}
+
+cmd_sync_upstream() {
+    local target=""
+    local group_filter=""
+    local dry_run=false
+
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -n|--dry-run)
+                dry_run=true
+                shift
+                ;;
+            -g|--group)
+                group_filter="$2"
+                shift 2
+                ;;
+            -a|--all)
+                target="--all"
+                shift
+                ;;
+            -h|--help)
+                show_help
+                exit 0
+                ;;
+            *)
+                if [[ -z "$target" ]]; then
+                    target="$1"
+                fi
+                shift
+                ;;
+        esac
+    done
+
+    shopt -s nullglob
+    local confs=("$CONF_DIR"/*.conf)
+    shopt -u nullglob
+
+    local work_root
+    work_root="$(mktemp -d "${TMPDIR:-/tmp}/forkhub-sync.XXXXXX")"
+    trap 'rm -rf "$work_root" 2>/dev/null || true' EXIT
+
+    local synced=0
+    local skipped=0
+    local failed=0
+
+    for c in "${confs[@]}"; do
+        if ! load_config "$c"; then
+            continue
+        fi
+        [[ -z "$fork_repo" || -z "$upstream_repo" ]] && continue
+        if [[ -n "$target" && "$target" != "--all" && "$target" != "$name" && "$target" != "${fork_repo#*/}" ]]; then
+            continue
+        fi
+        if [[ -n "$group_filter" && "$group_filter" != "$group" ]]; then
+            continue
+        fi
+
+        CURRENT_TARGET="$name"
+        local up_owner="${upstream_repo%%/*}"
+        local up_br="${upstream_branch:-main}"
+
+        local cmp_json behind
+        if ! cmp_json=$(gh api "repos/${fork_repo}/compare/${up_owner}:${up_br}...${branch}" 2>/dev/null); then
+            log "ERROR: No se pudo comparar ${fork_repo} (${branch}) contra ${upstream_repo}:${up_br}."
+            failed=$((failed + 1))
+            continue
+        fi
+
+        behind=$(python3 -c 'import sys,json; d=json.load(sys.stdin); print(d.get("behind_by",0))' <<< "$cmp_json" 2>/dev/null || echo 0)
+        if [[ "$behind" -eq 0 ]]; then
+            log "[✓] $name (${fork_repo}:${branch}) ya está al día contra ${upstream_repo}:${up_br}."
+            skipped=$((skipped + 1))
+            continue
+        fi
+
+        if [[ "$dry_run" == "true" ]]; then
+            log "[DRY-RUN] $name tiene $behind commits pendientes en ${upstream_repo}:${up_br} (estrategia: $sync_strategy)."
+            continue
+        fi
+
+        log "Sincronizando $name (-$behind commits desde ${upstream_repo}:${up_br}, estrategia: $sync_strategy)..."
+        local clone_dir="${work_root}/${name}"
+        rm -rf "$clone_dir"
+
+        if ! git clone "https://github.com/${fork_repo}.git" "$clone_dir" --quiet; then
+            log "ERROR: Falló git clone de ${fork_repo}."
+            failed=$((failed + 1))
+            continue
+        fi
+
+        git -C "$clone_dir" remote add real-upstream "https://github.com/${upstream_repo}.git"
+        git -C "$clone_dir" fetch --no-tags real-upstream "$up_br" --quiet
+        git -C "$clone_dir" fetch origin --quiet
+
+        case "$sync_strategy" in
+            adr0024)
+                if git -C "$clone_dir" show-ref --verify --quiet "refs/remotes/origin/upstream"; then
+                    git -C "$clone_dir" checkout -B upstream origin/upstream --quiet
+                    git -C "$clone_dir" merge --ff-only "real-upstream/${up_br}" --quiet
+                else
+                    git -C "$clone_dir" checkout -B upstream "real-upstream/${up_br}" --quiet
+                fi
+                git -C "$clone_dir" checkout -B "$branch" "origin/${branch}" --quiet
+                if git -C "$clone_dir" rebase upstream --quiet; then
+                    git -C "$clone_dir" push origin upstream --quiet
+                    git -C "$clone_dir" push --force-with-lease origin "$branch" --quiet
+                    log "¡ÉXITO! $name sincronizado (ADR 0024: upstream FF + rebase $branch)."
+                    synced=$((synced + 1))
+                else
+                    git -C "$clone_dir" rebase --abort 2>/dev/null || true
+                    log "ERROR: Conflicto al rebasear $name sobre ${upstream_repo}:${up_br}. Requiere resolución manual."
+                    failed=$((failed + 1))
+                fi
+                ;;
+            rebase-branch)
+                if git -C "$clone_dir" show-ref --verify --quiet "refs/remotes/origin/master"; then
+                    git -C "$clone_dir" checkout -B master origin/master --quiet
+                    git -C "$clone_dir" rebase "real-upstream/${up_br}" --quiet && \
+                        git -C "$clone_dir" push --force-with-lease origin master --quiet
+                fi
+                git -C "$clone_dir" checkout -B "$branch" "origin/${branch}" --quiet
+                if git -C "$clone_dir" rebase "real-upstream/${up_br}" --quiet; then
+                    git -C "$clone_dir" push --force-with-lease origin "$branch" --quiet
+                    log "¡ÉXITO! $name sincronizado (rebase de $branch sobre ${upstream_repo}:${up_br})."
+                    synced=$((synced + 1))
+                else
+                    git -C "$clone_dir" rebase --abort 2>/dev/null || true
+                    log "ERROR: Conflicto al rebasear $name ($branch)."
+                    failed=$((failed + 1))
+                fi
+                ;;
+            ff-only)
+                git -C "$clone_dir" checkout -B "$branch" "origin/${branch}" --quiet
+                if git -C "$clone_dir" merge --ff-only "real-upstream/${up_br}" --quiet; then
+                    git -C "$clone_dir" push origin "$branch" --quiet
+                    log "¡ÉXITO! $name actualizado por fast-forward."
+                    synced=$((synced + 1))
+                else
+                    log "ERROR: No se pudo hacer fast-forward en $name."
+                    failed=$((failed + 1))
+                fi
+                ;;
+            adr013)
+                local up_sha br_sync pr_url
+                up_sha=$(git -C "$clone_dir" rev-parse --short "real-upstream/${up_br}")
+                br_sync="sync/${up_br}-$(date -u +%Y%m%d)-${up_sha}"
+                git -C "$clone_dir" checkout -B "$branch" "origin/${branch}" --quiet
+                git -C "$clone_dir" checkout -b "$br_sync" --quiet
+                if git -C "$clone_dir" merge --no-ff --no-edit -m "Merge ${upstream_repo}/${up_br} ($up_sha) en ${branch}" "real-upstream/${up_br}"; then
+                    git -C "$clone_dir" push origin "real-upstream/${up_br}:refs/heads/upstream" --quiet || true
+                    git -C "$clone_dir" push origin "$br_sync" --quiet
+                    pr_url=$(gh pr create -R "$fork_repo" --base "$branch" --head "$br_sync" \
+                        --title "sync: merge ${upstream_repo}/${up_br} ${up_sha}" \
+                        --body "Merge automático vía forkhub (ADR-013). Sin rebase ni force-push.")
+                    gh pr merge "$pr_url" --merge --delete-branch --match-head-commit "$(git -C "$clone_dir" rev-parse HEAD)"
+                    log "¡ÉXITO! $name sincronizado vía PR merge-commit ($pr_url)."
+                    synced=$((synced + 1))
+                else
+                    git -C "$clone_dir" merge --abort 2>/dev/null || true
+                    log "ERROR: Conflicto de merge en $name (ADR-013). Requiere resolución en rama $br_sync."
+                    failed=$((failed + 1))
+                fi
+                ;;
+        esac
+    done
+
+    CURRENT_TARGET="forkhub"
+    log "Sincronización upstream finalizada. Sincronizados: $synced | Al día: $skipped | Con errores/conflictos: $failed"
+}
+
 cmd_status() {
+    if [[ "${1:-}" == "--upstream" || "${1:-}" == "-u" ]]; then
+        shift
+        cmd_upstream "$@"
+        return 0
+    fi
+
     shopt -s nullglob
     local confs=("$CONF_DIR"/*.conf)
     shopt -u nullglob
@@ -147,22 +423,23 @@ cmd_status() {
     echo -e "${BOLD}================================================================================${RESET}"
     echo -e "${BOLD}           FORKHUB — Dashboard de Salud de Flota de Repositorios                ${RESET}"
     echo -e "${BOLD}================================================================================${RESET}"
-    printf " %-13s %-9s %-15s %-25s %s\n" "REPOSITORIO" "GRUPO" "RAMA" "ESTADO" "ÚLTIMO COMMIT"
+    printf " %-18s %-9s %-15s %-25s %s\n" "REPOSITORIO" "GRUPO" "RAMA" "ESTADO LOCAL" "ÚLTIMO COMMIT"
     echo -e "--------------------------------------------------------------------------------"
 
     for c in "${confs[@]}"; do
         if ! load_config "$c"; then
             continue
         fi
+        [[ -z "$repo_dir" ]] && continue
 
         CURRENT_TARGET="$name"
         local status_badge=""
         local last_commit=""
 
         if [[ ! -d "$repo_dir" ]]; then
-            status_badge="${RED}❌ Directorio no existe${RESET}"
-            last_commit="N/A"
-            printf " %-13s %-9s %-15s %-34b %s\n" "$name" "$group" "$branch" "$status_badge" "$last_commit"
+            status_badge="${DIM}⚪ No clonado local${RESET}"
+            last_commit="${fork_repo:-N/A}"
+            printf " %-18s %-9s %-15s %-34b %s\n" "$name" "$group" "$branch" "$status_badge" "$last_commit"
             continue
         fi
 
@@ -171,7 +448,7 @@ cmd_status() {
         if ! git -C "$repo_dir" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
             status_badge="${RED}❌ No es repo Git${RESET}"
             last_commit="N/A"
-            printf " %-13s %-9s %-15s %-34b %s\n" "$name" "$group" "$branch" "$status_badge" "$last_commit"
+            printf " %-18s %-9s %-15s %-34b %s\n" "$name" "$group" "$branch" "$status_badge" "$last_commit"
             continue
         fi
 
@@ -213,7 +490,7 @@ cmd_status() {
             fi
         fi
 
-        printf " %-13s %-9s %-15s %-34b %s\n" "$name" "$group" "$branch" "$status_badge" "$last_commit"
+        printf " %-18s %-9s %-15s %-34b %s\n" "$name" "$group" "$branch" "$status_badge" "$last_commit"
     done
     echo -e "${BOLD}================================================================================${RESET}"
 }
@@ -273,6 +550,7 @@ cmd_update() {
         if ! load_config "$c"; then
             continue
         fi
+        [[ -z "$repo_dir" ]] && continue
 
         # Filtrar por nombre si se especificó uno
         if [[ -n "$target" && "$target" != "--all" && "$target" != "$name" ]]; then
@@ -292,8 +570,6 @@ cmd_update() {
         CURRENT_TARGET="$name"
 
         if [[ ! -d "$repo_dir" ]]; then
-            log "ERROR: El directorio $repo_dir no existe."
-            error_count=$((error_count + 1))
             continue
         fi
 
@@ -307,7 +583,7 @@ cmd_update() {
 
         # Fetch silencioso
         if ! git -C "$repo_dir" fetch "$remote" "$branch" --quiet 2>/dev/null; then
-            log "ADVERTENCIA: No se pudo obtener el remoto '$remote/$branch\. Compruebe conectividad."
+            log "ADVERTENCIA: No se pudo obtener el remoto '$remote/$branch'. Compruebe conectividad."
             error_count=$((error_count + 1))
             continue
         fi
@@ -468,6 +744,14 @@ case "${1:-}" in
     status)
         shift
         cmd_status "$@"
+        ;;
+    upstream|check-upstream)
+        shift
+        cmd_upstream "$@"
+        ;;
+    sync-upstream)
+        shift
+        cmd_sync_upstream "$@"
         ;;
     update)
         shift
