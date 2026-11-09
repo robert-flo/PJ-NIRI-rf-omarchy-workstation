@@ -162,20 +162,22 @@ if [[ "$ROLE" == "master" ]]; then
         exit 1
     fi
 else
-    log "Modo HIJA / RÉPLICA: Descargando $CLOUD_DEST ➔ $LOCAL_DIR"
+    log "Modo HIJA / RÉPLICA: Sincronizando réplica de Idalia..."
     LOCAL_MOUNT=$(findmnt -n -o TARGET /run/media/*/ALMACEN_BTRFS 2>/dev/null | head -n 1 || echo "")
     if [[ -n "$LOCAL_MOUNT" && -d "${LOCAL_MOUNT}/idalia" ]]; then
         if ! is_dir_empty "${LOCAL_MOUNT}/idalia"; then
-            log "Detectado respaldo local en ${LOCAL_MOUNT}/idalia. Restaurando en local a velocidad SSD..."
-            rsync -avP "${LOCAL_MOUNT}/idalia/" "$LOCAL_DIR/" || true
+            log "Paso 1/3: Detectado respaldo local en ${LOCAL_MOUNT}/idalia. Restaurando en local a velocidad SSD..."
+            rsync -avh --info=progress2,stats2 "${LOCAL_MOUNT}/idalia/" "$LOCAL_DIR/" || true
         fi
     fi
-    log "Verificando y sincronizando delta desde Google Drive (${CLOUD_DEST})..."
+    log "Paso 2/3: Verificando y sincronizando delta desde Google Drive (${CLOUD_DEST})..."
     if rclone sync "$CLOUD_DEST" "$LOCAL_DIR" "${RCLONE_FLAGS[@]}"; then
         log "Sincronización RÉPLICA completada exitosamente."
         if [[ -n "$LOCAL_MOUNT" && -d "${LOCAL_MOUNT}" ]]; then
+            echo ""
+            log "Paso 3/3: Replicando respaldo hacia disco externo Btrfs (${LOCAL_MOUNT}/idalia)..."
             mkdir -p "${LOCAL_MOUNT}/idalia"
-            rsync -a "$LOCAL_DIR/" "${LOCAL_MOUNT}/idalia/" 2>/dev/null || true
+            rsync -avh --info=progress2,stats2 --delete-delay "$LOCAL_DIR/" "${LOCAL_MOUNT}/idalia/" || true
         fi
         notify "sync-idalia" "Biblioteca multimedia actualizada desde la nube" "normal"
     else
