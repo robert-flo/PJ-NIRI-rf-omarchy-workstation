@@ -13,7 +13,7 @@ Arquitectura integral por capas, diseño de sistemas y bootstrap completo para u
 - **`Nyxuri / Noctalia Shell`**: Entorno modular de escritorio con Orbit Launcher, mpvpaper (videos animados) y presets en caliente.
 - **`Neovim Dual Compartido`**: Suite IDE basada en Neovim 0.12 con `vim.pack` (Fork Craftzdog, rama `personal`) + distribución personal aislada (`rvim`) centralizadas en `/z/nvims`.
 - **`Almacenamiento Compartido /z/`**: Espacio colaborativo multiusuario con setgid, ACLs y Git seguro.
-- **`dotbare`**: Gestión profesional de dotfiles mediante repositorios Git bare directamente sobre `$HOME`.
+- **`Chezmoi SSoT (rf-dotfiles)`**: Gestión unificada de dotfiles y catálogo de paquetes del sistema operativo mediante un monorepo canónico en `/z/rf-dotfiles` ([robert-flo/rf-dotfiles](https://github.com/robert-flo/rf-dotfiles)), con segregación estricta de perfiles y soporte para Omarchy 4.6, Clavis y Nyxuri.
 
 ---
 
@@ -34,7 +34,7 @@ make audit            # Simula y audita todas las capas sin tocar el sistema (--
 make test-idempotence # Valida inocuidad e idempotencia estricta en el sistema
 
 # --- Diagnóstico y Salud Unificada ---
-make doctor           # Diagnóstico en 6 fases: Nyxuri, Clavis/key, Display Manager, Java/Android, Sudoers y Timers
+make doctor           # Diagnóstico en 7 fases: Nyxuri, Clavis/key, Display Manager, Java/Android, Sudoers, Chezmoi SSoT y Timers
 make sync-status      # Dashboard en tiempo real de respaldos /z-drive, Google Drive y disco Btrfs
 
 # --- Gestión de Secretos (age) ---
