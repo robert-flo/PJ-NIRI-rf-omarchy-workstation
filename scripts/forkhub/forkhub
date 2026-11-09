@@ -341,10 +341,26 @@ cmd_sync_upstream() {
                     git -C "$clone_dir" push origin upstream --quiet
                     git -C "$clone_dir" push --force-with-lease origin "$branch" --quiet
                     log "¡ÉXITO! $name sincronizado (ADR 0024: upstream FF + rebase $branch)."
+                    notify "🚀 Forkhub: $name sincronizado" "ADR 0024 aplicado con éxito contra ${upstream_repo}:${up_br}" "normal"
                     synced=$((synced + 1))
+
+                    if [[ -d "$repo_dir" ]]; then
+                        log "Actualizando clon local en $repo_dir..."
+                        git -C "$repo_dir" fetch "$remote" "$branch" --quiet 2>/dev/null || true
+                        if git -C "$repo_dir" merge --ff-only FETCH_HEAD --quiet 2>/dev/null; then
+                            log "Clon local actualizado a $(git -C "$repo_dir" rev-parse --short HEAD)."
+                            if [[ -n "$post_update" ]]; then
+                                log "Ejecutando post_update hook: $post_update"
+                                eval "$post_update" 2>&1 | while IFS= read -r line; do
+                                    log "  [hook] $line"
+                                done || true
+                            fi
+                        fi
+                    fi
                 else
                     git -C "$clone_dir" rebase --abort 2>/dev/null || true
                     log "ERROR: Conflicto al rebasear $name sobre ${upstream_repo}:${up_br}. Requiere resolución manual."
+                    notify "⚠️ Forkhub: Conflicto en $name" "Conflicto al rebasear contra ${upstream_repo}:${up_br}. Requiere resolución manual." "critical"
                     failed=$((failed + 1))
                 fi
                 ;;
@@ -358,10 +374,26 @@ cmd_sync_upstream() {
                 if git -C "$clone_dir" rebase "real-upstream/${up_br}" --quiet; then
                     git -C "$clone_dir" push --force-with-lease origin "$branch" --quiet
                     log "¡ÉXITO! $name sincronizado (rebase de $branch sobre ${upstream_repo}:${up_br})."
+                    notify "🚀 Forkhub: $name sincronizado" "Rebase aplicado con éxito sobre ${upstream_repo}:${up_br}" "normal"
                     synced=$((synced + 1))
+
+                    if [[ -d "$repo_dir" ]]; then
+                        log "Actualizando clon local en $repo_dir..."
+                        git -C "$repo_dir" fetch "$remote" "$branch" --quiet 2>/dev/null || true
+                        if git -C "$repo_dir" merge --ff-only FETCH_HEAD --quiet 2>/dev/null; then
+                            log "Clon local actualizado a $(git -C "$repo_dir" rev-parse --short HEAD)."
+                            if [[ -n "$post_update" ]]; then
+                                log "Ejecutando post_update hook: $post_update"
+                                eval "$post_update" 2>&1 | while IFS= read -r line; do
+                                    log "  [hook] $line"
+                                done || true
+                            fi
+                        fi
+                    fi
                 else
                     git -C "$clone_dir" rebase --abort 2>/dev/null || true
                     log "ERROR: Conflicto al rebasear $name ($branch)."
+                    notify "⚠️ Forkhub: Conflicto en $name" "Conflicto al rebasear $name ($branch). Requiere resolución manual." "critical"
                     failed=$((failed + 1))
                 fi
                 ;;
@@ -370,9 +402,25 @@ cmd_sync_upstream() {
                 if git -C "$clone_dir" merge --ff-only "real-upstream/${up_br}" --quiet; then
                     git -C "$clone_dir" push origin "$branch" --quiet
                     log "¡ÉXITO! $name actualizado por fast-forward."
+                    notify "🚀 Forkhub: $name sincronizado" "Fast-forward aplicado con éxito desde ${upstream_repo}:${up_br}" "normal"
                     synced=$((synced + 1))
+
+                    if [[ -d "$repo_dir" ]]; then
+                        log "Actualizando clon local en $repo_dir..."
+                        git -C "$repo_dir" fetch "$remote" "$branch" --quiet 2>/dev/null || true
+                        if git -C "$repo_dir" merge --ff-only FETCH_HEAD --quiet 2>/dev/null; then
+                            log "Clon local actualizado a $(git -C "$repo_dir" rev-parse --short HEAD)."
+                            if [[ -n "$post_update" ]]; then
+                                log "Ejecutando post_update hook: $post_update"
+                                eval "$post_update" 2>&1 | while IFS= read -r line; do
+                                    log "  [hook] $line"
+                                done || true
+                            fi
+                        fi
+                    fi
                 else
                     log "ERROR: No se pudo hacer fast-forward en $name."
+                    notify "⚠️ Forkhub: Error FF en $name" "No se pudo realizar fast-forward desde ${upstream_repo}:${up_br}." "critical"
                     failed=$((failed + 1))
                 fi
                 ;;
@@ -390,10 +438,26 @@ cmd_sync_upstream() {
                         --body "Merge automático vía forkhub (ADR-013). Sin rebase ni force-push.")
                     gh pr merge "$pr_url" --merge --delete-branch --match-head-commit "$(git -C "$clone_dir" rev-parse HEAD)"
                     log "¡ÉXITO! $name sincronizado vía PR merge-commit ($pr_url)."
+                    notify "🚀 Forkhub: $name sincronizado" "PR creado y mergeado: $pr_url" "normal"
                     synced=$((synced + 1))
+
+                    if [[ -d "$repo_dir" ]]; then
+                        log "Actualizando clon local en $repo_dir..."
+                        git -C "$repo_dir" fetch "$remote" "$branch" --quiet 2>/dev/null || true
+                        if git -C "$repo_dir" merge --ff-only FETCH_HEAD --quiet 2>/dev/null; then
+                            log "Clon local actualizado a $(git -C "$repo_dir" rev-parse --short HEAD)."
+                            if [[ -n "$post_update" ]]; then
+                                log "Ejecutando post_update hook: $post_update"
+                                eval "$post_update" 2>&1 | while IFS= read -r line; do
+                                    log "  [hook] $line"
+                                done || true
+                            fi
+                        fi
+                    fi
                 else
                     git -C "$clone_dir" merge --abort 2>/dev/null || true
                     log "ERROR: Conflicto de merge en $name (ADR-013). Requiere resolución en rama $br_sync."
+                    notify "⚠️ Forkhub: Conflicto en $name" "Conflicto de merge contra ${upstream_repo}:${up_br} (ADR-013). Requiere resolución en rama $br_sync." "critical"
                     failed=$((failed + 1))
                 fi
                 ;;
