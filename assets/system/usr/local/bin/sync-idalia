@@ -8,6 +8,8 @@
 
 set -eo pipefail
 
+export RCLONE_CONFIG="${RCLONE_CONFIG:-/etc/rclone/rclone.conf}"
+
 LOCAL_DIR="${Z_DRIVE_IDALIA:-/z-drive/idalia}"
 CLOUD_DEST="gdrive:Idalia"
 CONFIG_FILE="/etc/rclone/sync-idalia.conf"

@@ -6,6 +6,8 @@
 
 set -eo pipefail
 
+export RCLONE_CONFIG="${RCLONE_CONFIG:-/etc/rclone/rclone.conf}"
+
 LOCAL_DIR="${Z_DRIVE_UPLOADS:-/z-drive/uploads-gracie}"
 CLOUD_DEST="gdrive:Uploads-Gracie"
 CONFIG_FILE="/etc/rclone/sync-uploads-gracie.conf"
