@@ -778,6 +778,29 @@ else
   log_ok "[✓] ya el tema MacTahoe GTK está instalado en /usr/share/themes."
 fi
 
+# Configuración global del sistema: Defaults de MacTahoe (GSettings schemas, DConf system-db, GTK3 y cursores)
+ASSETS_SYS="${SCRIPT_DIR}/../../assets/system"
+SCHEMA_OVERRIDE="/usr/share/glib-2.0/schemas/99_mactahoe_workstation.gschema.override"
+if [[ ! -f "$SCHEMA_OVERRIDE" || ! -f /etc/dconf/db/local.d/00-mactahoe || ! -f /etc/gtk-3.0/settings.ini ]]; then
+  log_change "[CAMBIO] Desplegando configuración de MacTahoe como tema por defecto a nivel de sistema..."
+  CHANGES=$((CHANGES + 1))
+  if [[ "$DRY_RUN" == false ]]; then
+    if [[ -d "$ASSETS_SYS" ]]; then
+      install -Dm644 "$ASSETS_SYS/usr/share/glib-2.0/schemas/99_mactahoe_workstation.gschema.override" "$SCHEMA_OVERRIDE"
+      install -Dm644 "$ASSETS_SYS/etc/dconf/profile/user" "/etc/dconf/profile/user"
+      install -Dm644 "$ASSETS_SYS/etc/dconf/db/local.d/00-mactahoe" "/etc/dconf/db/local.d/00-mactahoe"
+      install -Dm644 "$ASSETS_SYS/etc/gtk-3.0/settings.ini" "/etc/gtk-3.0/settings.ini"
+      install -Dm644 "$ASSETS_SYS/usr/share/icons/default/index.theme" "/usr/share/icons/default/index.theme"
+      install -Dm644 "$ASSETS_SYS/etc/environment.d/10-theme-mactahoe.conf" "/etc/environment.d/10-theme-mactahoe.conf"
+
+      glib-compile-schemas /usr/share/glib-2.0/schemas || true
+      dconf update || true
+    fi
+  fi
+else
+  log_ok "[✓] ya MacTahoe está configurado como tema por defecto a nivel de sistema (GLib/DConf/GTK)."
+fi
+
 # Componentes de Shell Clavis: clavis-fish-theme y my_zsh_prompt
 clone_or_update_fork "clavis-fish-theme" "https://github.com/robert-flo/PJ-NIRI-fo-clavis-fish-theme.git" "personal" "https://github.com/StatIndet/clavis-fish-theme.git" || true
 if [[ ! -x /usr/local/bin/clavis-fish-theme ]]; then
