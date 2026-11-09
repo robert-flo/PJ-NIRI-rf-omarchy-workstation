@@ -5,7 +5,10 @@ DEFAULT_SHARED_DIR="/z-drive"
 DEFAULT_GROUP="wheel"
 SHARED_DIR="${1:-$DEFAULT_SHARED_DIR}"
 GROUP="${2:-$DEFAULT_GROUP}"
-find "$SHARED_DIR" ! -group "$GROUP" -exec chown :"$GROUP" {} + 2>/dev/null
-find "$SHARED_DIR" -type f ! -perm -g=rwx -exec chmod g+rwx {} + 2>/dev/null
-find "$SHARED_DIR" -type d ! -perm -g=rwxs -exec chmod g+rwxs {} + 2>/dev/null
-setfacl -d -R -m g:"$GROUP":rwx "$SHARED_DIR" 2>/dev/null
+
+# Use -xdev and prune cloud mount to avoid traversing FUSE / network filesystems
+find "$SHARED_DIR" -xdev -path "$SHARED_DIR/cloud" -prune -o ! -group "$GROUP" -exec chown :"$GROUP" {} + 2>/dev/null || true
+find "$SHARED_DIR" -xdev -path "$SHARED_DIR/cloud" -prune -o -type f ! -perm -g=rwx -exec chmod g+rwx {} + 2>/dev/null || true
+find "$SHARED_DIR" -xdev -path "$SHARED_DIR/cloud" -prune -o -type d ! -perm -g=rwxs -exec chmod g+rwxs {} + 2>/dev/null || true
+find "$SHARED_DIR" -xdev -path "$SHARED_DIR/cloud" -prune -o -type d -exec setfacl -d -m g:"$GROUP":rwx {} + 2>/dev/null || true
+exit 0

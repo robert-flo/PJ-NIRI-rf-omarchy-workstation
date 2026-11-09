@@ -284,8 +284,8 @@ if [[ ! -d "$SOURCE" ]]; then
 fi
 
 # Configuración de exclusiones
-RSYNC_EXCLUDES=(--exclude "snapshots/**" --exclude "snapshots" --exclude ".snapshots/**" --exclude ".snapshots" --exclude "_boveda/**" --exclude "_boveda")
-RCLONE_EXCLUDES=(--exclude "snapshots/**" --exclude "snapshots" --exclude ".snapshots/**" --exclude ".snapshots" --exclude "_boveda/**" --exclude "_boveda" --exclude "_boveda_cifrada/**" --exclude "_boveda_cifrada")
+RSYNC_EXCLUDES=(--exclude "/snapshots" --exclude "snapshots/" --exclude "snapshots/**" --exclude "/.snapshots" --exclude ".snapshots/" --exclude ".snapshots/**" --exclude "/_boveda" --exclude "_boveda/" --exclude "_boveda/**")
+RCLONE_EXCLUDES=(--exclude "/snapshots" --exclude "snapshots/" --exclude "snapshots/**" --exclude "/.snapshots" --exclude ".snapshots/" --exclude ".snapshots/**" --exclude "/_boveda" --exclude "_boveda/" --exclude "_boveda/**" --exclude "/_boveda_cifrada" --exclude "_boveda_cifrada/" --exclude "_boveda_cifrada/**")
 
 if [[ "$APPLY_EXCLUDES" == true ]]; then
     if [[ -f "$EXCLUDE_FILE" ]]; then

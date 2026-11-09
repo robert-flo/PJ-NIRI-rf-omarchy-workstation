@@ -127,6 +127,7 @@ install_sys_file() {
     fi
     log_change "[CAMBIO] Creando symlink $dst -> $target_link..."
     CHANGES=$((CHANGES + 1))
+    run mkdir -p "$(dirname "$dst")"
     run ln -sfn "$target_link" "$dst"
     return 0
   fi
@@ -207,7 +208,7 @@ fi
 while IFS= read -r -d '' skel_f; do
   rel="${skel_f#"$SYS_ASSETS"}"
   install_sys_file "$rel" "0644" "root:root"
-done < <(find "$SYS_ASSETS/etc/skel" -type f -print0 2>/dev/null)
+done < <(find "$SYS_ASSETS/etc/skel" \( -type f -o -type l \) -print0 2>/dev/null)
 
 if ! getent group adbusers >/dev/null 2>&1; then
   log_change "[CAMBIO] Creando grupo de sistema 'adbusers'..."
@@ -328,7 +329,7 @@ fi
 while IFS= read -r -d '' amn_f; do
   rel="${amn_f#"$SYS_ASSETS"}"
   install_sys_file "$rel" "0644" "root:root"
-done < <(find "$SYS_ASSETS/etc/amnesic-skel" -type f -print0 2>/dev/null)
+done < <(find "$SYS_ASSETS/etc/amnesic-skel" \( -type f -o -type l \) -print0 2>/dev/null)
 install_sys_file "/etc/guest-skel"
 install_sys_file "/etc/sandbox-skel"
 install_sys_file "/etc/polkit-1/rules.d/00-guest-block.rules" "0644" "root:root"
@@ -454,6 +455,49 @@ EOF
         mkdir -p "$acc_home/Android"
         ln -sfn /opt/android-sdk "$acc_home/Android/Sdk"
         chown -h "$acc:$acc" "$acc_home/Android" "$acc_home/Android/Sdk" 2>/dev/null || true
+      fi
+    fi
+
+    # Symlinks para espacio colaborativo /z-drive y Cloud FUSE (para usuarios wheel)
+    if id -nG "$acc" 2>/dev/null | tr ' ' '\n' | grep -qx "wheel"; then
+      for zl_entry in "Cloud:/z-drive/cloud" "Google-Drive:/z-drive/cloud" "google-drive:/z-drive/cloud" \
+                      "Idalia:/z-drive/idalia" "Uploads-Gracie:/z-drive/uploads-gracie" "_boveda:/z-drive/boveda"; do
+        zl_name="${zl_entry%:*}"
+        zl_target="${zl_entry#*:}"
+        if [[ ! -L "$acc_home/$zl_name" ]]; then
+          log_change "[CAMBIO] Creando symlink $acc_home/$zl_name -> $zl_target ($acc)..."
+          CHANGES=$((CHANGES + 1))
+          if [[ "$DRY_RUN" == false ]]; then
+            ln -sfn "$zl_target" "$acc_home/$zl_name"
+            chown -h "$acc:$acc" "$acc_home/$zl_name" 2>/dev/null || true
+          fi
+        fi
+      done
+
+      # Enlace ~/Work/tries -> /z-drive/tries
+      if [[ ! -L "$acc_home/Work/tries" ]]; then
+        log_change "[CAMBIO] Configurando symlink $acc_home/Work/tries -> /z-drive/tries ($acc)..."
+        CHANGES=$((CHANGES + 1))
+        if [[ "$DRY_RUN" == false ]]; then
+          mkdir -p "$acc_home/Work"
+          if [[ -d "$acc_home/Work/tries" ]]; then
+            cp -a "$acc_home/Work/tries/." /z-drive/tries/ 2>/dev/null || true
+            rm -rf "$acc_home/Work/tries"
+          fi
+          ln -sfn /z-drive/tries "$acc_home/Work/tries"
+          chown -h "$acc:$acc" "$acc_home/Work" "$acc_home/Work/tries" 2>/dev/null || true
+        fi
+      fi
+
+      # Enlace ~/.config/rclone/rclone.conf -> /etc/rclone/rclone.conf
+      if [[ ! -L "$acc_home/.config/rclone/rclone.conf" ]]; then
+        log_change "[CAMBIO] Configurando symlink $acc_home/.config/rclone/rclone.conf -> /etc/rclone/rclone.conf ($acc)..."
+        CHANGES=$((CHANGES + 1))
+        if [[ "$DRY_RUN" == false ]]; then
+          mkdir -p "$acc_home/.config/rclone"
+          ln -sfn /etc/rclone/rclone.conf "$acc_home/.config/rclone/rclone.conf"
+          chown -R "$acc:$acc" "$acc_home/.config/rclone" 2>/dev/null || true
+        fi
       fi
     fi
 
@@ -773,6 +817,17 @@ for sh_unit in synchub@.service synchub@.timer synchub-btrfs-attach.service rclo
   install_sys_file "/etc/systemd/system/${sh_unit}" "0644" "root:root"
 done
 install_sys_file "/etc/udev/rules.d/99-almacen-btrfs.rules" "0644" "root:root"
+
+# Escudo de Primera Sincronización: Restaurar /z-drive/tries si está vacío y hay disco local montado
+if [[ -d "/z-drive/tries" && $(find /z-drive/tries -maxdepth 1 -mindepth 1 2>/dev/null | wc -l) -eq 0 ]]; then
+  if [[ -x /usr/local/bin/sync-tries ]] && findmnt -n -o TARGET /run/media/*/ALMACEN_BTRFS >/dev/null 2>&1; then
+    log_change "[CAMBIO] Restaurando proyectos iniciales en /z-drive/tries desde ALMACEN_BTRFS..."
+    CHANGES=$((CHANGES + 1))
+    if [[ "$DRY_RUN" == false ]]; then
+      /usr/local/bin/sync-tries --pull || true
+    fi
+  fi
+fi
 
 # ==============================================================================
 # CAPA 03: Paquetes [omarchy-personal], Toolchain Global, Fuentes y Android
@@ -1209,6 +1264,7 @@ if [[ "$DRY_RUN" == false ]]; then
   systemctl daemon-reload
   for unit_en in forkhub.timer niri-update.timer z-perms.service z-perms.timer z-drive-perms.timer \
                  android-sdk-perms.timer android-projects-perms.timer sandbox-btrfs-boot-reset.service \
+                 rclone-gdrive-mount.service sync-tries-watcher.service \
                  sync-tries.timer sync-idalia.timer sync-uploads-gracie.timer; do
     if ! systemctl is-enabled --quiet "$unit_en" 2>/dev/null; then
       log_change "[CAMBIO] Habilitando unidad systemd $unit_en..."
@@ -1216,6 +1272,11 @@ if [[ "$DRY_RUN" == false ]]; then
       systemctl enable --now "$unit_en" 2>/dev/null || systemctl enable "$unit_en" 2>/dev/null || true
     fi
   done
+  if [[ -f /etc/rclone/rclone.conf ]] && ! systemctl is-active --quiet rclone-gdrive-mount.service 2>/dev/null; then
+    log_change "[CAMBIO] Iniciando rclone-gdrive-mount.service para FUSE Cloud..."
+    CHANGES=$((CHANGES + 1))
+    systemctl start rclone-gdrive-mount.service 2>/dev/null || true
+  fi
   udevadm control --reload-rules 2>/dev/null || true
 fi
 
