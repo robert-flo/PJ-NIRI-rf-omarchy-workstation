@@ -181,8 +181,8 @@ set -euo pipefail
 
 PACMAN_CONF="${PACMAN_CONF:-/etc/pacman.conf}"
 PACMAN_D="${PACMAN_D:-/etc/pacman.d}"
-DEV_FLAG="${PACMAN_D}/omarchy-personal-dev.flag"
-DROPIN_PATH="${PACMAN_D}/omarchy-personal.conf"
+DEV_FLAG="${DEV_FLAG:-${PACMAN_D}/omarchy-personal-dev.flag}"
+DROPIN_PATH="${DROPIN_PATH:-${PACMAN_D}/omarchy-personal.conf}"
 
 if [[ ! -f "$PACMAN_CONF" ]]; then
   echo "Error: no se encontró $PACMAN_CONF" >&2
@@ -374,14 +374,47 @@ fi
 echo ""
 log_info "=== [Etapa 0/4] Pre-Flight: Sudo sin Contraseña, Flota y Forks Upstream ==="
 
-# 0.1 Auto-provisión de sudo sin contraseña (NOPASSWD + verifypw = any) para UNIQUE_USERS
+# 0.1 Normalización de precedencia en sudoers.d (10-installer -> 00-omarchy-wheel) y NOPASSWD para UNIQUE_USERS
+LEGACY_INSTALLER_SUDO="${SUDOERS_D}/10-installer"
+WHEEL_SUDO_TARGET="${SUDOERS_D}/00-omarchy-wheel"
+has_legacy_installer_sudo=false
+if [[ -f "$LEGACY_INSTALLER_SUDO" ]]; then
+  has_legacy_installer_sudo=true
+elif [[ ! -r "$SUDOERS_D" && $EUID -ne 0 ]] && sudo -n test -f "$LEGACY_INSTALLER_SUDO" 2>/dev/null; then
+  has_legacy_installer_sudo=true
+fi
+
+if [[ "$has_legacy_installer_sudo" == true ]]; then
+  log_change "[CAMBIO] Normalizando $LEGACY_INSTALLER_SUDO -> $WHEEL_SUDO_TARGET para respetar precedencia léxica de 01..04..."
+  CHANGES=$((CHANGES + 1))
+  TMP_WHEEL_SUDO="$(mktemp "${TMPDIR:-/tmp}/sudoers-00-wheel.XXXXXX")"
+  CLEANUP_FILES+=("$TMP_WHEEL_SUDO")
+  printf "%s\n" "%wheel ALL=(ALL:ALL) ALL" > "$TMP_WHEEL_SUDO"
+  if [[ "$DRY_RUN" == true ]]; then
+    run install -o root -g root -m 0440 "$TMP_WHEEL_SUDO" "$WHEEL_SUDO_TARGET"
+    run rm -f "$LEGACY_INSTALLER_SUDO"
+  else
+    mkdir -p "$SUDOERS_D"
+    visudo -cf "$TMP_WHEEL_SUDO" >/dev/null
+    install -o root -g root -m 0440 "$TMP_WHEEL_SUDO" "$WHEEL_SUDO_TARGET"
+    rm -f "$LEGACY_INSTALLER_SUDO"
+  fi
+fi
+
 for u in "${UNIQUE_USERS[@]}"; do
   SUDO_TARGET="${SUDOERS_D}/04_${u}"
   TMP_SUDO="$(mktemp "${TMPDIR:-/tmp}/sudoers-04-${u}.XXXXXX")"
   CLEANUP_FILES+=("$TMP_SUDO")
   printf "%s\n" "${u} ALL=(ALL) NOPASSWD: ALL" "Defaults:${u} verifypw = any" > "$TMP_SUDO"
 
+  sudo_rule_ok=false
   if [[ -r "$SUDO_TARGET" ]] && cmp -s "$TMP_SUDO" "$SUDO_TARGET"; then
+    sudo_rule_ok=true
+  elif [[ ! -r "$SUDOERS_D" && $EUID -ne 0 ]] && sudo -n cmp -s "$TMP_SUDO" "$SUDO_TARGET" 2>/dev/null; then
+    sudo_rule_ok=true
+  fi
+
+  if [[ "$sudo_rule_ok" == true ]]; then
     log_ok "[✓] ya el usuario '$u' cuenta con sudo sin contraseña en $SUDO_TARGET."
   else
     log_change "[CAMBIO] Configurando sudo sin contraseña para '$u' en $SUDO_TARGET..."
@@ -677,7 +710,7 @@ if [[ "$DRY_RUN" == true ]]; then
   generate_hook_content > "$TMP_H"
   chmod +x "$TMP_H"
 
-  PACMAN_CONF="$TMP_PC" PACMAN_D="$TMP_PD" bash "$TMP_H"
+  DROPIN_PATH="${PACMAN_D}/omarchy-personal.conf" DEV_FLAG="$TMP_PD/omarchy-personal-dev.flag" PACMAN_CONF="$TMP_PC" PACMAN_D="$TMP_PD" bash "$TMP_H"
 
   if ! cmp -s "$PACMAN_CONF" "$TMP_PC"; then
     log_change "[CAMBIO] pacman.conf se modificaría según el hook pre-refresh:"
@@ -875,22 +908,40 @@ if [[ "$ROLE" == "padre" ]]; then
       log_ok "[✓] ya los permisos y ACLs en $WORKSPACE_DIR son correctos."
     fi
 
-    # 2.6 core.fileMode false por sub-repositorio
+    # 2.6 core.fileMode false y gh-resolved hacia origin por sub-repositorio
     fm_changed=false
+    gh_res_changed=false
     while IFS= read -r gitdir; do
       [[ -n "$gitdir" ]] || continue
+      repo_sub="$(basename "$(dirname "$gitdir")")"
       val="$(git --git-dir="$gitdir" config --get core.fileMode 2>/dev/null || true)"
       if [[ "$val" != "false" ]]; then
-        repo_sub="$(basename "$(dirname "$gitdir")")"
         log_change "[CAMBIO] Ajustando core.fileMode false en '$repo_sub'..."
         CHANGES=$((CHANGES + 1))
         fm_changed=true
         run git --git-dir="$gitdir" config core.fileMode false
       fi
+
+      if git --git-dir="$gitdir" config --get remote.upstream.url >/dev/null 2>&1; then
+        up_res="$(git --git-dir="$gitdir" config --get remote.upstream.gh-resolved 2>/dev/null || true)"
+        or_res="$(git --git-dir="$gitdir" config --get remote.origin.gh-resolved 2>/dev/null || true)"
+        if [[ -n "$up_res" || "$or_res" != "base" ]]; then
+          log_change "[CAMBIO] Fijando repositorio por defecto de gh hacia origin en '$repo_sub'..."
+          CHANGES=$((CHANGES + 1))
+          gh_res_changed=true
+          if [[ -n "$up_res" ]]; then
+            run git --git-dir="$gitdir" config --unset-all remote.upstream.gh-resolved
+          fi
+          run git --git-dir="$gitdir" config remote.origin.gh-resolved base
+        fi
+      fi
     done < <(find "$WORKSPACE_DIR" -maxdepth 2 -name ".git" -type d 2>/dev/null)
 
     if [[ "$fm_changed" == false ]]; then
       log_ok "[✓] ya core.fileMode está en false en los repositorios del workspace."
+    fi
+    if [[ "$gh_res_changed" == false ]]; then
+      log_ok "[✓] ya gh apunta por defecto a origin en los forks del workspace."
     fi
   fi
 
