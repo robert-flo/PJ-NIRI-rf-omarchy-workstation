@@ -6,6 +6,8 @@
 
 set -eo pipefail
 
+export RCLONE_CONFIG="${RCLONE_CONFIG:-/etc/rclone/rclone.conf}"
+
 STATE_DIR="/z-drive/.sync-state"
 LOCAL_BTRFS_MOUNT=$(findmnt -n -o TARGET /run/media/*/ALMACEN_BTRFS 2>/dev/null | head -n 1 || echo "/run/media/omarchy/ALMACEN_BTRFS")
 LOCAL_BTRFS_DEST="${LOCAL_BTRFS_MOUNT}/gracie"

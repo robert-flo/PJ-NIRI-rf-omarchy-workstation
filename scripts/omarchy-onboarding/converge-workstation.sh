@@ -460,7 +460,10 @@ EOF
 
     # Symlinks para espacio colaborativo /z-drive y Cloud FUSE (para usuarios wheel)
     if id -nG "$acc" 2>/dev/null | tr ' ' '\n' | grep -qx "wheel"; then
-      for zl_entry in "Cloud:/z-drive/cloud" "Google-Drive:/z-drive/cloud" "google-drive:/z-drive/cloud" \
+      # Limpiar posibles alias redundantes previos
+      rm -f "$acc_home/google-drive" "$acc_home/Google-Drive" 2>/dev/null || true
+
+      for zl_entry in "Cloud:/z-drive/cloud" \
                       "Idalia:/z-drive/idalia" "Uploads-Gracie:/z-drive/uploads-gracie" "_boveda:/z-drive/boveda"; do
         zl_name="${zl_entry%:*}"
         zl_target="${zl_entry#*:}"

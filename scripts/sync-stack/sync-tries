@@ -6,6 +6,8 @@
 
 set -eo pipefail
 
+export RCLONE_CONFIG="${RCLONE_CONFIG:-/etc/rclone/rclone.conf}"
+
 SOURCE="${Z_DRIVE_TRIES:-/z-drive/tries}"
 VAULT_SOURCE="${Z_DRIVE_BOVEDA:-/z-drive/boveda}"
 LOCAL_MOUNT=$(findmnt -n -o TARGET /run/media/*/ALMACEN_BTRFS 2>/dev/null | head -n 1 || echo "/run/media/omarchy/ALMACEN_BTRFS")
