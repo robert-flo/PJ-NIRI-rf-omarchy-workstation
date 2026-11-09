@@ -79,11 +79,17 @@ Se define el archivo declarativo `.chezmoidata/packages.json` con tres categorí
 ### 3.5. Convergencia Dual: Playbook Orchestrator + Chezmoi Executor
 
 1. **Chezmoi como Ejecutor Autónomo:**
-   - Contiene el hook `run_onchange_before_01-install-packages.sh.tmpl` atado al hash SHA-256 de `packages.json`.
+   - Contiene el hook `run_onchange_before_01-install-packages.sh.tmpl` atado al hash SHA-256 de `packages.json` (incluyendo Java 21 por defecto).
    - Cualquier invocación de `chezmoi apply` verifica e instala automáticamente paquetes faltantes si cuenta con privilegios sudo.
-2. **`make converge` / `converge-workstation.sh` como Validador y Orquestador:**
-   - La Capa 02 mantiene `/z/rf-dotfiles` sincronizado contra `origin/master`.
-   - La Capa 03 lee directamente `packages.json` vía `jq` para auditar e instalar paquetes.
+   - **Delegación Declarativa de Espacio de Usuario:**
+     - Enlaces a almacenamiento compartido: `Cloud`, `Vaughan`, `Idalia`, `Uploads-Gracie`, `_boveda`, `dot_Work/symlink_tries`, `dot_config/rclone/symlink_rclone.conf`.
+     - Entorno Google/Android: `dot_Android/symlink_Sdk` -> `/opt/android-sdk` y `dot_config/fish/conf.d/android.fish`.
+     - Unidades systemd de usuario Clavis: `dot_config/systemd/user/niri.service.wants/symlink_clavis-*.service` gestionadas mediante `.chezmoiignore.tmpl`.
+     - Layout de escritorios: `dot_local/state/omarchy/workspace-layouts/1.lua` (`floating`).
+2. **`make converge` / `converge-workstation.sh` como Validador y Orquestador de Invariantes del Sistema:**
+   - La Capa 01 provisiona usuarios, sudoers, Btrfs y permisos de sistema, eliminando más de 300 líneas de inyecciones imperativas en `.bashrc`.
+   - La Capa 02 mantiene `/z/rf-dotfiles` sincronizado contra `origin/master` y garantiza la infraestructura `/z`, `/zt` y `/z-drive` a nivel root.
+   - La Capa 03 lee directamente `packages.json` vía `jq` para auditar e instalar paquetes del sistema.
    - La Capa 04 ejecuta `sudo -u "$u" -H chezmoi apply --source=/z/rf-dotfiles --force` en todos los perfiles de forma 100% idempotente (0 cambios en subsecuentes ejecuciones).
 3. **`make doctor`:**
    - Incorpora validación de salud de Chezmoi y conteo de paquetes declarados vs instalados.
@@ -93,6 +99,6 @@ Se define el archivo declarativo `.chezmoidata/packages.json` con tres categorí
 ## 4. Consecuencias y Beneficios
 
 - **Reproducibilidad Inmediata:** Cualquier máquina nueva en modo PADRE o HIJA queda completamente aprovisionada clonando `/z/rf-dotfiles` y ejecutando `make converge`.
-- **Cero Adivinanzas:** El usuario dispone de su entorno `lazygit` optimizado, shell fish y dock Omarchy 4.6 listo para usar en todos sus perfiles.
+- **Cero Adivinanzas:** El usuario dispone de su entorno `lazygit` optimizado, shell fish, dock Omarchy 4.6, variables de desarrollo Android y accesos Cloud listos para usar en todos sus perfiles.
 - **Idempotencia Estricta:** Las ejecuciones subsecuentes de `make converge` reportan exactamente `Cambios aplicados en capas 01-07: 0`.
 - **Preservación Segura:** Los repositorios históricos (`sura-home`, `pj-domina-home_forever`, etc.) permanecen en staging en `~/Work/tries/dotfiles-staging/` para cherry-picking antes de cualquier archivado formal.
