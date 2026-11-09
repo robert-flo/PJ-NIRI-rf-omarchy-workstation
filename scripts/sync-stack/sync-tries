@@ -237,6 +237,31 @@ notify() {
     fi
 }
 
+sync_git_repos_against_github() {
+    export GIT_TERMINAL_PROMPT=0
+    local target_user="${SUDO_USER:-}"
+    if [[ -z "$target_user" || "$target_user" == "root" ]]; then
+        target_user=$(getent group wheel 2>/dev/null | cut -d: -f4 | tr ',' '\n' | grep -v "root" | head -n 1 || echo "")
+    fi
+
+    local run_git=()
+    if [[ $EUID -eq 0 && -n "$target_user" && "$target_user" != "root" ]]; then
+        run_git=("sudo" "-u" "$target_user" "GIT_TERMINAL_PROMPT=0" "git")
+    else
+        run_git=("git")
+    fi
+
+    for dir in "$SOURCE"/*; do
+        if [[ -d "$dir/.git" ]]; then
+            local repo_name="$(basename "$dir")"
+            local cur_branch
+            cur_branch="$("${run_git[@]}" -C "$dir" branch --show-current 2>/dev/null || echo 'master')"
+            echo "  ➔ Actualizando $repo_name ($cur_branch)..."
+            "${run_git[@]}" -C "$dir" pull --rebase --autostash origin "$cur_branch" 2>&1 | sed 's/^/     /' || true
+        fi
+    done
+}
+
 # Modo PULL / RESTAURAR DESDE NUBE O DISCO LOCAL (GitHub SSoT)
 if [[ "$MODE" == "pull" ]]; then
     echo "=================================================================="
@@ -268,14 +293,7 @@ if [[ "$MODE" == "pull" ]]; then
     # 2. Sincronización obligatoria contra GitHub (SSoT de código)
     if [[ "$DRY_RUN" == false ]]; then
         echo "[2/3] Sincronizando repositorios Git contra GitHub (SSoT)..."
-        for dir in "$SOURCE"/*; do
-            if [[ -d "$dir/.git" ]]; then
-                repo_name="$(basename "$dir")"
-                cur_branch="$(git -C "$dir" branch --show-current 2>/dev/null || echo 'master')"
-                echo "  ➔ Actualizando $repo_name ($cur_branch)..."
-                git -C "$dir" pull --rebase --autostash origin "$cur_branch" 2>&1 | sed 's/^/     /' || true
-            fi
-        done
+        sync_git_repos_against_github
     else
         echo "[2/3] [DRY-RUN] Sincronización Git contra GitHub simulada."
     fi
@@ -408,13 +426,7 @@ CLOUD_SYNCED=false
 # ==============================================================================
 if [[ "$DRY_RUN" == false ]]; then
     log "--- 0. Sincronizando repositorios Git en ${SOURCE} contra GitHub (SSoT) ---"
-    for dir in "$SOURCE"/*; do
-        if [[ -d "$dir/.git" ]]; then
-            repo_name="$(basename "$dir")"
-            cur_branch="$(git -C "$dir" branch --show-current 2>/dev/null || echo 'master')"
-            git -C "$dir" pull --rebase --autostash origin "$cur_branch" >/dev/null 2>&1 || true
-        fi
-    done
+    sync_git_repos_against_github >/dev/null 2>&1 || true
 fi
 
 # ==============================================================================
