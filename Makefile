@@ -1,7 +1,7 @@
 .PHONY: help install install-padre install-hija converge audit doctor \
         secrets lock-secrets test-secrets \
         forks forks-audit forks-sync \
-        sync sync-status \
+        sync sync-replica sync-status \
         sandbox-status sandbox-reset \
         test-idempotence clean
 
@@ -41,7 +41,8 @@ help:
 	@echo -e "  $(GREEN)make forks-sync$(RESET)         Sincroniza y mergea upstreams respetando directiva ADR 0024"
 	@echo ""
 	@echo -e "$(BOLD)🔄 ALMACENAMIENTO Y SINCRONIZACIÓN:$(RESET)"
-	@echo -e "  $(CYAN)make sync$(RESET)               Dispara ciclo de sincronización seguro (sync-all)"
+	@echo -e "  $(CYAN)make sync$(RESET)               Siembra y sincronización integral inteligente (sync-all)"
+	@echo -e "  $(CYAN)make sync-replica$(RESET)       Fuerza descarga/réplica desde Cloud sin riesgo (sync-all --replica)"
 	@echo ""
 	@echo -e "$(BOLD)🏝️ SANDBOX DESECHABLE (BTRFS):$(RESET)"
 	@echo -e "  $(RED)make sandbox-status$(RESET)     Consulta estado del subvolumen y snapshots del sandbox"
@@ -95,6 +96,9 @@ sync-status:
 
 sync:
 	sudo sync-all
+
+sync-replica:
+	sudo sync-all --replica
 
 secrets:
 	./scripts/secrets/desbloquear-secretos.sh

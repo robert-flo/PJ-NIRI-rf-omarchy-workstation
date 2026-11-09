@@ -1,0 +1,245 @@
+#!/usr/bin/env bash
+#
+# sync-vaughan: Sincronización robusta de /z-drive/vaughan hacia ALMACEN_BTRFS (Btrfs CoW) y Google Drive
+# Google Drive es la Fuente Única de Verdad (SSoT).
+# La carpeta local es una réplica offline protegida contra borrado accidental.
+# Adaptado para espacio colaborativo multi-usuario /z-drive
+#
+
+set -eo pipefail
+
+export RCLONE_CONFIG="${RCLONE_CONFIG:-/etc/rclone/rclone.conf}"
+
+SOURCE="${Z_DRIVE_VAUGHAN:-/z-drive/vaughan}"
+LOCAL_MOUNT=$(findmnt -n -o TARGET /run/media/*/ALMACEN_BTRFS 2>/dev/null | head -n 1 || echo "/run/media/rollo/ALMACEN_BTRFS")
+LOCAL_DEST="${LOCAL_MOUNT}/vaughan"
+LOCAL_SNAPSHOTS="${LOCAL_MOUNT}/.snapshots"
+CLOUD_DEST="gdrive:vaughan"
+
+STATE_DIR="/z-drive/.sync-state"
+mkdir -p "$STATE_DIR"
+LOG_FILE="${STATE_DIR}/sync-vaughan.log"
+LOCK_FILE="${STATE_DIR}/sync-vaughan.lock"
+
+MAX_SNAPSHOTS=40
+
+MODE="sync"
+DO_LOCAL=true
+DO_CLOUD=true
+DRY_RUN=false
+
+show_help() {
+    cat << EOF
+Uso: $(basename "$0") [OPCIONES] | [COMANDO]
+
+Sincroniza '${SOURCE}' hacia Google Drive y el disco externo BTRFS.
+Google Drive es la Fuente de la Verdad (SSoT); la nube jamás puede ser borrada por una carpeta local vacía.
+
+Comandos:
+  status, --status             Muestra el estado de salud, discos y snapshots.
+  pull, --pull, --replica      Descarga / restaura réplica (híbrido Btrfs local ➔ Google Drive SSoT).
+
+Opciones:
+  -n, --dry-run        Simula las operaciones sin modificar ningún archivo.
+  -l, --local-only     Sincroniza únicamente hacia el disco local (${LOCAL_DEST}).
+  -r, --cloud-only     Sincroniza únicamente hacia Google Drive (${CLOUD_DEST}).
+  -h, --help           Muestra esta ayuda.
+EOF
+}
+
+show_status() {
+    if command -v sync-status >/dev/null 2>&1; then
+        sync-status
+        exit 0
+    fi
+    echo "=================================================================="
+    echo "               ESTADO DE SINCRONIZACIÓN: VAUGHAN                  "
+    echo "=================================================================="
+    echo "• Directorio Local: $SOURCE"
+    echo "• Destino Remoto:   $CLOUD_DEST (SSoT)"
+    echo "• Destino Local:    $LOCAL_DEST"
+    exit 0
+}
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        -n|--dry-run)
+            DRY_RUN=true
+            shift
+            ;;
+        -l|--local-only)
+            DO_CLOUD=false
+            shift
+            ;;
+        -r|--cloud-only)
+            DO_LOCAL=false
+            shift
+            ;;
+        pull|--pull|--replica|replica)
+            MODE="pull"
+            shift
+            ;;
+        status|--status)
+            show_status
+            ;;
+        -h|--help)
+            show_help
+            exit 0
+            ;;
+        *)
+            echo "Opción no reconocida: $1" >&2
+            show_help
+            exit 1
+            ;;
+    esac
+done
+
+log() {
+    local msg="[$(date '+%Y-%m-%d %H:%M:%S')] [VAUGHAN] $*"
+    echo "$msg"
+    mkdir -p "$(dirname "$LOG_FILE")"
+    echo "$msg" >> "$LOG_FILE"
+}
+
+notify() {
+    local title="$1"
+    local msg="$2"
+    local urgency="${3:-normal}"
+    if command -v notify-send >/dev/null 2>&1 && [[ -n "${WAYLAND_DISPLAY:-${DISPLAY:-}}" ]]; then
+        notify-send -u "$urgency" "$title" "$msg" 2>/dev/null || true
+    fi
+}
+
+is_dir_empty() {
+    [[ -z "$(find "$1" -mindepth 1 -maxdepth 1 -print -quit 2>/dev/null)" ]]
+}
+
+# Control de concurrencia
+exec 203>"$LOCK_FILE"
+if ! flock -n 203; then
+    log "INFO: Ya hay una sincronización de Vaughan en progreso. Omitiendo."
+    exit 0
+fi
+
+mkdir -p "$SOURCE"
+
+# MODO PULL / RÉPLICA HÍBRIDA (Btrfs Local ➔ Google Drive SSoT)
+if [[ "$MODE" == "pull" ]]; then
+    echo "=================================================================="
+    echo "      RÉPLICA / RESTAURACIÓN DE VAUGHAN (HÍBRIDO BTRFS ➔ CLOUD)   "
+    echo "=================================================================="
+    echo "Destino local: $SOURCE"
+
+    PULL_RSYNC_OPTS=("-avP")
+    PULL_RCLONE_OPTS=()
+    if [[ "$DRY_RUN" == true ]]; then
+        PULL_RSYNC_OPTS+=("-n")
+        PULL_RCLONE_OPTS+=("--dry-run")
+        log "[DRY-RUN] Simulación de réplica inicial activa (sin transferencia real)."
+    fi
+
+    # 1. Si existe respaldo local en Btrfs, restaurar primero a velocidad SSD
+    if findmnt -M "$LOCAL_MOUNT" >/dev/null 2>&1 && [[ -d "$LOCAL_DEST" ]]; then
+        if ! is_dir_empty "$LOCAL_DEST"; then
+            log "Paso 1/2: Restaurando réplica local inicial desde disco Btrfs (${LOCAL_DEST})..."
+            rsync "${PULL_RSYNC_OPTS[@]}" "$LOCAL_DEST/" "$SOURCE/" || true
+        fi
+    fi
+
+    # 2. Descargar / verificar delta contra Google Drive (SSoT)
+    if command -v rclone >/dev/null 2>&1; then
+        log "Paso 2/2: Sincronizando delta desde Google Drive (${CLOUD_DEST})..."
+        rclone copy "$CLOUD_DEST" "$SOURCE" -P --fast-list --skip-links \
+            --drive-chunk-size=32M --transfers=8 --checkers=16 "${PULL_RCLONE_OPTS[@]}"
+    fi
+
+    # 3. Si hay disco local montado, actualizar el respaldo en Btrfs
+    if [[ "$DRY_RUN" == false ]] && findmnt -M "$LOCAL_MOUNT" >/dev/null 2>&1; then
+        mkdir -p "$LOCAL_DEST"
+        rsync -a "$SOURCE/" "$LOCAL_DEST/" || true
+    fi
+
+    log "[✓] Réplica de Vaughan completada exitosamente."
+    exit 0
+fi
+
+# Escudo de carpeta local vacía en modo normal
+if is_dir_empty "$SOURCE"; then
+    if [[ ! -t 1 ]]; then
+        log "[REPOSO] Carpeta local '$SOURCE' vacía. Esperando siembra inicial vía 'make sync'. Servicio en espera segura."
+        exit 0
+    fi
+    ALERT_MSG="ALERTA: Carpeta local '${SOURCE}' vacía (0 archivos). Sincronización detenida para proteger la nube."
+    log "SEGURIDAD: $ALERT_MSG"
+    echo "=================================================================="
+    echo "  🛡️  ESCUDO DE SEGURIDAD: CARPETA LOCAL VACÍA DETECTADA"
+    echo "=================================================================="
+    echo "Tu carpeta local '${SOURCE}' no contiene archivos."
+    echo "Para descargar tus archivos de forma segura desde la nube, ejecuta:"
+    echo "  sync-vaughan --pull  (o ejecuta: make sync)"
+    echo "=================================================================="
+    notify "🛡️ Escudo sync-vaughan activado" "$ALERT_MSG" "critical"
+    exit 2
+fi
+
+log "=== Iniciando sincronización de ${SOURCE} ==="
+
+ERRORS=0
+
+# Paso 1: Subida acumulativa segura (NUNCA borra en la nube)
+if [[ "$DO_CLOUD" == true ]] && command -v rclone >/dev/null 2>&1; then
+    log "--- 1. Subiendo cambios locales hacia Google Drive (Modo Acumulativo Seguro) ---"
+    RCLONE_UPLOAD=("rclone" "copy" "$SOURCE" "$CLOUD_DEST" -P --fast-list --skip-links \
+        --drive-chunk-size=32M --transfers=8 --checkers=16)
+    [[ "$DRY_RUN" == true ]] && RCLONE_UPLOAD+=(--dry-run)
+
+    if ! "${RCLONE_UPLOAD[@]}"; then
+        log "ERROR al respaldar adiciones hacia Google Drive."
+        ERRORS=$((ERRORS + 1))
+    fi
+
+    # Paso 2: Actualizar réplica local desde Google Drive (Cloud es SSoT)
+    log "--- 2. Actualizando réplica local desde Google Drive (SSoT) ---"
+    RCLONE_PULL=("rclone" "sync" "$CLOUD_DEST" "$SOURCE" -P --fast-list --skip-links \
+        --drive-chunk-size=32M --transfers=8 --checkers=16)
+    [[ "$DRY_RUN" == true ]] && RCLONE_PULL+=(--dry-run)
+
+    if ! "${RCLONE_PULL[@]}"; then
+        log "ERROR al actualizar réplica desde Google Drive."
+        ERRORS=$((ERRORS + 1))
+    fi
+fi
+
+# Paso 3: Sincronización Local hacia ALMACEN_BTRFS (con Snapshots)
+if [[ "$DO_LOCAL" == true ]]; then
+    if findmnt -M "$LOCAL_MOUNT" >/dev/null 2>&1; then
+        log "--- 3. Sincronizando hacia disco externo Btrfs (${LOCAL_DEST}) ---"
+        mkdir -p "$LOCAL_DEST" "$LOCAL_SNAPSHOTS"
+
+        RSYNC_CMD=("rsync" "-avh" "--info=progress2,stats2")
+        [[ "$DRY_RUN" == true ]] && RSYNC_CMD+=("-n")
+        RSYNC_CMD+=("--delete-delay" "$SOURCE/" "$LOCAL_DEST/")
+
+        if "${RSYNC_CMD[@]}"; then
+            log "Sincronización local Btrfs completada."
+            if [[ "$DRY_RUN" == false && -d "$LOCAL_DEST" ]] && command -v btrfs >/dev/null 2>&1; then
+                STAMP=$(date '+%Y%m%d_%H%M%S')
+                SNAP_PATH="${LOCAL_SNAPSHOTS}/vaughan_${STAMP}"
+                sudo btrfs subvolume snapshot -r "$LOCAL_DEST" "$SNAP_PATH" >/dev/null 2>&1 || true
+            fi
+        else
+            log "ERROR en sincronización local hacia Btrfs."
+            ERRORS=$((ERRORS + 1))
+        fi
+    else
+        log "AVISO: Disco local Btrfs no montado. Omitiendo respaldo local."
+    fi
+fi
+
+if [[ $ERRORS -eq 0 ]]; then
+    log "=== Sincronización de Vaughan finalizada con ÉXITO. ==="
+    exit 0
+else
+    log "=== Sincronización de Vaughan finalizada con ERRORES ($ERRORS). ==="
+    exit 1
+fi

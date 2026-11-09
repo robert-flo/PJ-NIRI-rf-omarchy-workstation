@@ -237,34 +237,58 @@ notify() {
     fi
 }
 
-# Modo PULL / RESTAURAR DESDE NUBE O DISCO LOCAL
+# Modo PULL / RESTAURAR DESDE NUBE O DISCO LOCAL (GitHub SSoT)
 if [[ "$MODE" == "pull" ]]; then
     echo "=================================================================="
-    echo "        DESCARGA / RESTAURACIÓN DE PROYECTOS (PULL)              "
+    echo "  RÉPLICA / RESTAURACIÓN DE TRIES (GITHUB SSoT + CLOUD BACKUP)   "
     echo "=================================================================="
     echo "Destino local: $SOURCE"
     mkdir -p "$SOURCE" "$VAULT_SOURCE"
 
-    # 1. Si hay disco local montado, restaurar primero desde Btrfs
-    if findmnt -M "$LOCAL_MOUNT" >/dev/null 2>&1 && [[ -d "$LOCAL_DEST" ]]; then
-        echo "[1/2] Restaurando desde disco local Btrfs (${LOCAL_DEST})..."
-        rsync -avP "${RSYNC_EXCLUDES[@]}" "$LOCAL_DEST/" "$SOURCE/" || true
+    PULL_RCLONE_OPTS=()
+    PULL_RSYNC_OPTS=("-a")
+    if [[ "$DRY_RUN" == true ]]; then
+        PULL_RCLONE_OPTS+=("--dry-run")
+        PULL_RSYNC_OPTS+=("-n")
+        log "[DRY-RUN] Simulación de pull activa (sin transferencia real)."
     fi
 
-    # 2. Descargar o actualizar desde Google Drive
+    # 1. Descargar o actualizar desde Google Drive (árbol de proyectos y configs no versionadas)
     if command -v rclone >/dev/null 2>&1; then
-        echo "[2/2] Descargando desde Google Drive (${CLOUD_DEST})..."
-        rclone copy "$CLOUD_DEST" "$SOURCE" -P --fast-list --skip-links "${RCLONE_EXCLUDES[@]}" || true
+        echo "[1/3] Sincronizando respaldo base desde Google Drive (${CLOUD_DEST})..."
+        rclone copy "$CLOUD_DEST" "$SOURCE" -P --fast-list --skip-links "${RCLONE_EXCLUDES[@]}" "${PULL_RCLONE_OPTS[@]}" || true
 
         # Restaurar bóveda cifrada si existe
         if rclone listremotes | grep -q "gdrive_boveda:"; then
             echo "Descargando Bóveda Cifrada desde gdrive_boveda:..."
-            rclone copy "gdrive_boveda:" "$VAULT_SOURCE" -P || true
+            rclone copy "gdrive_boveda:" "$VAULT_SOURCE" -P "${PULL_RCLONE_OPTS[@]}" || true
         fi
     fi
 
+    # 2. Sincronización obligatoria contra GitHub (SSoT de código)
+    if [[ "$DRY_RUN" == false ]]; then
+        echo "[2/3] Sincronizando repositorios Git contra GitHub (SSoT)..."
+        for dir in "$SOURCE"/*; do
+            if [[ -d "$dir/.git" ]]; then
+                repo_name="$(basename "$dir")"
+                cur_branch="$(git -C "$dir" branch --show-current 2>/dev/null || echo 'master')"
+                echo "  ➔ Actualizando $repo_name ($cur_branch)..."
+                git -C "$dir" pull --rebase --autostash origin "$cur_branch" 2>&1 | sed 's/^/     /' || true
+            fi
+        done
+    else
+        echo "[2/3] [DRY-RUN] Sincronización Git contra GitHub simulada."
+    fi
+
+    # 3. Si hay disco local montado, actualizar el respaldo en Btrfs
+    if findmnt -M "$LOCAL_MOUNT" >/dev/null 2>&1; then
+        echo "[3/3] Actualizando espejo local en disco Btrfs (${LOCAL_DEST})..."
+        mkdir -p "$LOCAL_DEST"
+        rsync "${PULL_RSYNC_OPTS[@]}" "${RSYNC_EXCLUDES[@]}" "$SOURCE/" "$LOCAL_DEST/" || true
+    fi
+
     echo ""
-    echo "[✓] Descarga / restauración PULL completada."
+    echo "[✓] Réplica inicial de Tries al día con GitHub y la nube."
     exit 0
 fi
 
@@ -312,6 +336,11 @@ if [[ "$MODE" == "sync" && "$FORCE_DELETE" == false ]]; then
 
     # 0. Escudo para carpeta local vacía
     if [[ $TOTAL_LOCAL_FILES -eq 0 ]]; then
+        if [[ ! -t 1 ]]; then
+            log "[REPOSO] Carpeta local '${SOURCE}' vacía. Esperando siembra inicial vía 'make sync'. Servicio en espera."
+            rm -f "$TMP_DEL_LIST"
+            exit 0
+        fi
         ALERT_MSG="ALERTA CRÍTICA: Carpeta local '${SOURCE}' vacía (0 archivos). Sincronización detenida para proteger los respaldos en la nube y disco externo."
         log "SEGURIDAD: $ALERT_MSG"
         echo "=================================================================="
@@ -320,7 +349,7 @@ if [[ "$MODE" == "sync" && "$FORCE_DELETE" == false ]]; then
         echo "Tu carpeta local '${SOURCE}' no contiene archivos."
         echo "Si ejecutas modo sync en una carpeta vacía, se eliminaría el respaldo."
         echo "Para descargar tus proyectos primero, ejecuta:"
-        echo "  sync-tries --pull"
+        echo "  sync-tries --pull  (o ejecuta: make sync)"
         echo "=================================================================="
         notify "🛡️ Escudo sync-tries activado" "$ALERT_MSG" "critical"
         rm -f "$TMP_DEL_LIST"
@@ -373,6 +402,20 @@ fi
 ERRORS=0
 LOCAL_SYNCED=false
 CLOUD_SYNCED=false
+
+# ==============================================================================
+# PASO 0: SINCRONIZACIÓN OBLIGATORIA CONTRA GITHUB (SSoT DE CÓDIGO)
+# ==============================================================================
+if [[ "$DRY_RUN" == false ]]; then
+    log "--- 0. Sincronizando repositorios Git en ${SOURCE} contra GitHub (SSoT) ---"
+    for dir in "$SOURCE"/*; do
+        if [[ -d "$dir/.git" ]]; then
+            repo_name="$(basename "$dir")"
+            cur_branch="$(git -C "$dir" branch --show-current 2>/dev/null || echo 'master')"
+            git -C "$dir" pull --rebase --autostash origin "$cur_branch" >/dev/null 2>&1 || true
+        fi
+    done
+fi
 
 # ==============================================================================
 # PASO 1: SINCRONIZACIÓN LOCAL HACIA ALMACEN_BTRFS (con Snapshots CoW)

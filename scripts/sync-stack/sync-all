@@ -2,6 +2,7 @@
 #
 # sync-all: Dispara la sincronización integral de todas las carpetas activas en /z-drive
 # Soporta opción de apagado automático seguro al concluir: --poweroff / --shutdown
+# Soporta modo réplica inicial segura: --replica / --bootstrap / -r
 #
 
 set -eo pipefail
@@ -12,6 +13,7 @@ LOG_FILE="${STATE_DIR}/sync-all.log"
 
 POWEROFF=false
 DRY_RUN=false
+FORCE_REPLICA=false
 
 for arg in "$@"; do
     case "$arg" in
@@ -21,13 +23,17 @@ for arg in "$@"; do
         -n|--dry-run)
             DRY_RUN=true
             ;;
+        --replica|--bootstrap|-r)
+            FORCE_REPLICA=true
+            ;;
         -h|--help)
             echo "Uso: $(basename "$0") [OPCIONES]"
             echo ""
             echo "Opciones:"
-            echo "  -n, --dry-run         Simula las sincronizaciones sin transferir ni borrar archivos."
+            echo "  -n, --dry-run          Simula las sincronizaciones sin transferir ni borrar archivos."
+            echo "  --replica, --bootstrap Fuerza la descarga/réplica segura desde la nube (Cloud ➔ Local)."
             echo "  --poweroff, --shutdown Supervisa la sincronización y apaga el equipo tras finalizar con éxito."
-            echo "  -h, --help            Muestra esta ayuda."
+            echo "  -h, --help             Muestra esta ayuda."
             exit 0
             ;;
         *)
@@ -55,10 +61,14 @@ notify() {
 EXTRA_FLAGS=()
 [[ "$DRY_RUN" == true ]] && EXTRA_FLAGS+=("-n")
 
+is_dir_empty() {
+    [[ -z "$(find "$1" -mindepth 1 -maxdepth 1 -print -quit 2>/dev/null)" ]]
+}
+
 echo "=================================================================="
 echo "          SINCRONIZACIÓN INTEGRAL DE /Z-DRIVE                     "
 echo "=================================================================="
-log "Iniciando ciclo global de sincronización en /z-drive (Poweroff: $POWEROFF, Dry-Run: $DRY_RUN)..."
+log "Iniciando ciclo global de sincronización en /z-drive (Poweroff: $POWEROFF, Dry-Run: $DRY_RUN, Force-Replica: $FORCE_REPLICA)..."
 
 if [[ "$POWEROFF" == true ]]; then
     notify "🌙 Supervisor de Apagado Activo" "La PC se apagará automáticamente al concluir todas las sincronizaciones." "normal"
@@ -66,33 +76,75 @@ fi
 
 ERRORS=0
 
-# 1. Tries (Código + Bóveda Privada)
+# 1. Tries (Código Git con GitHub SSoT + Bóveda Privada)
 if command -v sync-tries >/dev/null 2>&1; then
     echo ""
-    log ">> [1/3] Disparando sync-tries..."
-    if ! sync-tries "${EXTRA_FLAGS[@]}"; then
-        log "ADVERTENCIA: sync-tries finalizó con errores."
-        ERRORS=$((ERRORS + 1))
+    if is_dir_empty /z-drive/tries || [[ "$FORCE_REPLICA" == true ]]; then
+        log ">> [1/4] /z-drive/tries no sembrado o modo réplica forzado. Iniciando réplica inicial segura..."
+        if ! sync-tries --pull "${EXTRA_FLAGS[@]}"; then
+            log "ADVERTENCIA: sync-tries --pull finalizó con errores."
+            ERRORS=$((ERRORS + 1))
+        fi
+    else
+        log ">> [1/4] Disparando sync-tries (GitHub SSoT + Respaldos)..."
+        if ! sync-tries "${EXTRA_FLAGS[@]}"; then
+            log "ADVERTENCIA: sync-tries finalizó con errores."
+            ERRORS=$((ERRORS + 1))
+        fi
     fi
 fi
 
-# 2. Idalia (Multimedia)
+# 2. Vaughan (Recursos y multimedia ~105 GB)
+if command -v sync-vaughan >/dev/null 2>&1; then
+    echo ""
+    if is_dir_empty /z-drive/vaughan || [[ "$FORCE_REPLICA" == true ]]; then
+        log ">> [2/4] /z-drive/vaughan no sembrado o modo réplica forzado. Iniciando réplica inicial segura..."
+        if ! sync-vaughan --pull "${EXTRA_FLAGS[@]}"; then
+            log "ADVERTENCIA: sync-vaughan --pull finalizó con errores."
+            ERRORS=$((ERRORS + 1))
+        fi
+    else
+        log ">> [2/4] Disparando sync-vaughan hacia Google Drive y Btrfs..."
+        if ! sync-vaughan "${EXTRA_FLAGS[@]}"; then
+            log "ADVERTENCIA: sync-vaughan finalizó con errores."
+            ERRORS=$((ERRORS + 1))
+        fi
+    fi
+fi
+
+# 3. Idalia (Multimedia ~30.7 GB)
 if command -v sync-idalia >/dev/null 2>&1; then
     echo ""
-    log ">> [2/3] Disparando sync-idalia..."
-    if ! sync-idalia "${EXTRA_FLAGS[@]}"; then
-        log "ADVERTENCIA: sync-idalia finalizó con errores."
-        ERRORS=$((ERRORS + 1))
+    if is_dir_empty /z-drive/idalia || [[ "$FORCE_REPLICA" == true ]]; then
+        log ">> [3/4] /z-drive/idalia no sembrado o modo réplica forzado. Iniciando réplica inicial segura..."
+        if ! sync-idalia --replica "${EXTRA_FLAGS[@]}"; then
+            log "ADVERTENCIA: sync-idalia --replica finalizó con errores."
+            ERRORS=$((ERRORS + 1))
+        fi
+    else
+        log ">> [3/4] Disparando sync-idalia hacia Google Drive..."
+        if ! sync-idalia "${EXTRA_FLAGS[@]}"; then
+            log "ADVERTENCIA: sync-idalia finalizó con errores."
+            ERRORS=$((ERRORS + 1))
+        fi
     fi
 fi
 
-# 3. Uploads-Gracie
+# 4. Uploads-Gracie
 if command -v sync-uploads-gracie >/dev/null 2>&1; then
     echo ""
-    log ">> [3/3] Disparando sync-uploads-gracie..."
-    if ! sync-uploads-gracie "${EXTRA_FLAGS[@]}"; then
-        log "ADVERTENCIA: sync-uploads-gracie finalizó con errores."
-        ERRORS=$((ERRORS + 1))
+    if is_dir_empty /z-drive/uploads-gracie && [[ "$FORCE_REPLICA" == true ]]; then
+        log ">> [4/4] Modo réplica forzado para Uploads-Gracie..."
+        if ! sync-uploads-gracie --replica "${EXTRA_FLAGS[@]}"; then
+            log "ADVERTENCIA: sync-uploads-gracie --replica finalizó con errores."
+            ERRORS=$((ERRORS + 1))
+        fi
+    else
+        log ">> [4/4] Disparando sync-uploads-gracie..."
+        if ! sync-uploads-gracie "${EXTRA_FLAGS[@]}"; then
+            log "ADVERTENCIA: sync-uploads-gracie finalizó con errores."
+            ERRORS=$((ERRORS + 1))
+        fi
     fi
 fi
 
