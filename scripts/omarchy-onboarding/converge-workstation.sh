@@ -560,7 +560,8 @@ else
     quickshell qt6-base qt6-declarative qt6-svg qt6-wayland qt6-5compat
     qt6-lottie qt6-location qt6-positioning qt6-tools maplibre-native-qt qtkeychain-qt6
     vulkan-headers ttf-material-symbols-variable matugen awww brightnessctl ddcutil
-    imagemagick xdg-terminal-exec wl-clipboard slurp grim gpu-screen-recorder ffmpeg
+    imagemagick xdg-terminal-exec wl-clipboard slurp grim gpu-screen-recorder ffmpeg mpv
+    gst-plugins-base gst-plugins-good gst-plugins-bad gst-plugins-ugly gst-libav gst-plugin-pipewire
     libpulse hyprpicker flatpak waybar fuzzel mako swaybg swaylock xwayland-satellite
     xdg-desktop-portal-gnome polkit-gnome playerctl cliphist libqalculate wlsunset
     gtk-layer-shell cava ttf-ibm-plex ttf-ibmplex-mono-nerd chezmoi jq
