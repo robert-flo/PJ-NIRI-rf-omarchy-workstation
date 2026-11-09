@@ -374,32 +374,41 @@ fi
 echo ""
 log_info "=== [Etapa 0/4] Pre-Flight: Sudo sin Contraseña, Flota y Forks Upstream ==="
 
-# 0.1 Normalización de precedencia en sudoers.d (10-installer -> 00-omarchy-wheel) y NOPASSWD para UNIQUE_USERS
-LEGACY_INSTALLER_SUDO="${SUDOERS_D}/10-installer"
+# 0.1 Normalización de precedencia en sudoers.d (cualquier regla %wheel sin NOPASSWD -> 00-omarchy-wheel) y NOPASSWD para UNIQUE_USERS
 WHEEL_SUDO_TARGET="${SUDOERS_D}/00-omarchy-wheel"
-has_legacy_installer_sudo=false
-if [[ -f "$LEGACY_INSTALLER_SUDO" ]]; then
-  has_legacy_installer_sudo=true
-elif [[ ! -r "$SUDOERS_D" && $EUID -ne 0 ]] && sudo -n test -f "$LEGACY_INSTALLER_SUDO" 2>/dev/null; then
-  has_legacy_installer_sudo=true
+declare -a LEGACY_WHEEL_FILES=()
+if [[ -r "$SUDOERS_D" ]]; then
+  for sf in "$SUDOERS_D"/*; do
+    [[ -f "$sf" ]] || continue
+    [[ "$(basename "$sf")" == "00-omarchy-wheel" ]] && continue
+    if grep -qE '^[[:space:]]*%wheel[[:space:]]+ALL=\(ALL(:ALL)?\)[[:space:]]+ALL[[:space:]]*$' "$sf" 2>/dev/null; then
+      LEGACY_WHEEL_FILES+=("$sf")
+    fi
+  done
+elif [[ $EUID -ne 0 ]] && sudo -n test -d "$SUDOERS_D" 2>/dev/null; then
+  for cand in "$SUDOERS_D/10-installer" "$SUDOERS_D/wheel" "$SUDOERS_D/10-wheel"; do
+    if sudo -n grep -qE '^[[:space:]]*%wheel[[:space:]]+ALL=\(ALL(:ALL)?\)[[:space:]]+ALL[[:space:]]*$' "$cand" 2>/dev/null; then
+      LEGACY_WHEEL_FILES+=("$cand")
+    fi
+  done
 fi
 
-if [[ "$has_legacy_installer_sudo" == true ]]; then
-  log_change "[CAMBIO] Normalizando $LEGACY_INSTALLER_SUDO -> $WHEEL_SUDO_TARGET para respetar precedencia léxica de 01..04..."
+for legacy_sf in "${LEGACY_WHEEL_FILES[@]}"; do
+  log_change "[CAMBIO] Normalizando $legacy_sf -> $WHEEL_SUDO_TARGET para respetar precedencia léxica de 01..04..."
   CHANGES=$((CHANGES + 1))
   TMP_WHEEL_SUDO="$(mktemp "${TMPDIR:-/tmp}/sudoers-00-wheel.XXXXXX")"
   CLEANUP_FILES+=("$TMP_WHEEL_SUDO")
   printf "%s\n" "%wheel ALL=(ALL:ALL) ALL" > "$TMP_WHEEL_SUDO"
   if [[ "$DRY_RUN" == true ]]; then
     run install -o root -g root -m 0440 "$TMP_WHEEL_SUDO" "$WHEEL_SUDO_TARGET"
-    run rm -f "$LEGACY_INSTALLER_SUDO"
+    run rm -f "$legacy_sf"
   else
     mkdir -p "$SUDOERS_D"
     visudo -cf "$TMP_WHEEL_SUDO" >/dev/null
     install -o root -g root -m 0440 "$TMP_WHEEL_SUDO" "$WHEEL_SUDO_TARGET"
-    rm -f "$LEGACY_INSTALLER_SUDO"
+    rm -f "$legacy_sf"
   fi
-fi
+done
 
 for u in "${UNIQUE_USERS[@]}"; do
   SUDO_TARGET="${SUDOERS_D}/04_${u}"

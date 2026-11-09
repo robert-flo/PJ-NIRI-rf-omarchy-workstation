@@ -11,9 +11,48 @@ Arquitectura integral por capas, diseño de sistemas y bootstrap completo para u
 - **`niri-edge`**: Compositor Wayland scrollable tiling con minimización nativa y esquinas redondeadas.
 - **`Clavis Shell`**: Suite de escritorio en Quickshell (Qt 6 / C++) con estética Liquid Glass inspirada en macOS.
 - **`Nyxuri / Noctalia Shell`**: Entorno modular de escritorio con Orbit Launcher, mpvpaper (videos animados) y presets en caliente.
-- **`Neovim Dual Compartido`**: Suite IDE basada en Neovim 0.12 con `vim.pack` (Fork Craftzdog) + distribución personal aislada (`rvim`) centralizadas en `/z/nvims`.
+- **`Neovim Dual Compartido`**: Suite IDE basada en Neovim 0.12 con `vim.pack` (Fork Craftzdog, rama `personal`) + distribución personal aislada (`rvim`) centralizadas en `/z/nvims`.
 - **`Almacenamiento Compartido /z/`**: Espacio colaborativo multiusuario con setgid, ACLs y Git seguro.
 - **`dotbare`**: Gestión profesional de dotfiles mediante repositorios Git bare directamente sobre `$HOME`.
+
+---
+
+## 🚀 Inicio Rápido (Cómo Comenzar en una Máquina Nueva o Existente)
+
+### 1. Puesta en Marcha desde la Terminal (`onboard-machine.sh`)
+
+Clona este repositorio y ejecuta el asistente idempotente de onboarding según el rol de tu máquina (funciona con cualquier nombre de usuario administrador, ej. `rollo`, `omarchy`, etc.):
+
+```bash
+# 1. (Opcional) Si aún no has desbloqueado tus credenciales SSH/GitHub CLI cifradas con age:
+./scripts/secrets/desbloquear-secretos.sh
+
+# 2A. Estación de Desarrollo (Modo PADRE / DEV — clona /z/pj-omarchy y enlaza omarchy dev link):
+sudo ./scripts/omarchy-onboarding/onboard-machine.sh --padre
+
+# 2B. Máquina Cliente / Producción (Modo HIJA — instala paquetes de [omarchy-personal]):
+sudo ./scripts/omarchy-onboarding/onboard-machine.sh --hija
+
+# 2C. Simulación sin modificar el sistema (Dry-Run):
+./scripts/omarchy-onboarding/onboard-machine.sh --padre --dry-run
+```
+
+**¿Qué ejecuta automáticamente este comando?**
+- **Etapa 0 (Pre-Flight):** Configura `sudo` sin contraseña para tu usuario en `/etc/sudoers.d/04_<usuario>`, instala `/etc/forkhub/repos.d/*.conf`, y audita + sincroniza los **15 forks** contra sus respectivos `upstream` (`forkhub upstream` y `forkhub sync-upstream --all`).
+- **Etapa 1 (Criptografía, `/z` y Pacman):** Crea `/z` (`root:wheel`, `2775` + ACLs), importa y firma la clave GPG `E954119B629B58F6`, y activa el repositorio firmado `[omarchy-personal]`.
+- **Etapa 2 (Convergencia de Rol):** En **Modo PADRE**, clona `/z/pj-omarchy`, ejecuta `./pj listo` para inicializar toda la flota (`fo-omarchy`, `fo-omarchy-pkgs`, `rf-omarchy-personal-repo`, `rf-fork-docs`, etc.) y activa el Modo Live (`omarchy dev link`). En **Modo HIJA**, actualiza paquetes y aprovisiona los perfiles de usuario.
+- **Etapa 3 (Verificación):** Comprueba paquetes, base de datos `[omarchy-personal]` y estado del enlace de desarrollo.
+
+### 2. Prompts Recomendados para Agentes IA (Antigravity / Cursor)
+
+Si abres este repositorio en **Google Antigravity (`agy`)** o **Cursor**, puedes iniciar con cualquiera de estos prompts:
+
+- **Para ejecutar el onboarding inicial de la máquina (Modo PADRE):**
+  > *"Lee `AGENTS.md` y la nota `01.9`. Ejecuta el onboarding en Modo PADRE con `sudo ./scripts/omarchy-onboarding/onboard-machine.sh --padre` y verifica que quede con 0 cambios pendientes."*
+- **Para desplegar o auditar todas las capas de la estación de trabajo (Capas 01 a 07):**
+  > *"Lee `AGENTS.md` y `00 - MOC y Topologia/00.0 - Mapa General del Sistema (MOC).md`. Audita qué capas de la estación de trabajo faltan por aplicar en esta máquina (usuarios, `/z/nvims`, toolchain, Clavis, Nyxuri, synchub) y aplícalas de forma idempotente."*
+- **Para auditar y sincronizar todos tus forks contra upstream:**
+  > *"Ejecuta `./scripts/forkhub/forkhub upstream` y `./scripts/forkhub/forkhub sync-upstream --all` para verificar que toda mi flota de forks esté al día contra upstream."*
 
 ---
 
@@ -54,21 +93,31 @@ PJ-NIRI-rf-omarchy-workstation/
 │   ├── 01.2 - Hardware y Graficos (Fix Parpadeo Intel i915).md
 │   ├── 01.3 - Creacion de Usuarios y Cuentas de Sistema.md
 │   ├── 01.4 - Display Manager y Sesiones SDDM (Herald OS).md
-│   └── 01.5 - Snapshots y Recuperacion con Btrfs.md
+│   ├── 01.5 - Snapshots y Recuperacion con Btrfs.md
+│   ├── 01.6 - Boveda de Secretos y Bootstrap Criptografico (age).md
+│   ├── 01.7 - Usuario Especial Amnesico y Sandbox (guest).md
+│   ├── 01.8 - Usuario Sandbox Btrfs Desechable (sandbox).md
+│   └── 01.9 - Onboarding del Sistema y Repositorio Personal (Modo Padre DEV vs Hija).md
 ├── 02 - Almacenamiento Compartido/
 │   ├── 02.1 - Directorio Compartido (z) y Permisos ACL.md
-│   └── 02.2 - Repositorio de Wallpapers y Medios (z).md
+│   ├── 02.2 - Repositorio de Wallpapers y Medios (z).md
+│   ├── 02.3 - Espacio Colaborativo z-drive y Sincronizacion Cloud.md
+│   └── 02.4 - Suite Declarativa synchub y Automatizacion Udev.md
 ├── 03 - Toolchain Global y Estacion de Trabajo/
 │   ├── 03.1 - Paquetes Globales y Navegadores Web.md
 │   ├── 03.2 - Toolchain de Desarrollo (C, Rust, Node, Python).md
 │   ├── 03.3 - Terminal GPU (Ghostty) y Multiplexores (tmux, herdr).md
-│   └── 03.4 - Tipografias y Fuentes del Sistema.md
+│   ├── 03.4 - Tipografias y Fuentes del Sistema.md
+│   ├── 03.5 - Ecosistema Google Antigravity y Android Studio Canary (BYOA).md
+│   ├── 03.6 - Ecosistema Omarchy Personal Fork y Portal fork-docs.md
+│   └── 03.7 - Flujo de Trabajo con Try y Directorios Efimeros (zt).md
 ├── 04 - Entornos de Escritorio/
 │   ├── 04.1 - Niri Core (niri-edge y key-cli).md
 │   ├── 04.2 - Desktop Flavor Clavis (Quickshell y Actualizaciones).md
 │   ├── 04.3 - Apariencia Clavis (MacTahoe y Fcitx5).md
 │   ├── 04.4 - Suite de Aplicaciones Clavis.md
-│   └── 04.5 - Desktop Flavor Nyxuri (Noctalia Shell y mpvpaper).md
+│   ├── 04.5 - Desktop Flavor Nyxuri (Noctalia Shell y mpvpaper).md
+│   └── 04.6 - Guia de Validacion Visual y Checklist Funcional (Clavis y Nyxuri).md
 ├── 05 - Suite de Desarrollo Neovim/
 │   ├── 05.1 - Arquitectura Neovim Dual Compartida (z-nvims).md
 │   └── 05.2 - Configuracion Craftzdog (nvim) y Distro Propia (rvim).md
@@ -80,13 +129,17 @@ PJ-NIRI-rf-omarchy-workstation/
 │   ├── 07.1 - Mapa Completo de Atajos de Teclado (Niri, Clavis, Nyxuri).md
 │   ├── 07.2 - Repositorios Upstream y Fuentes Externas.md
 │   ├── 07.3 - Guia de Video Showcase y Recursos Audiovisuales.md
-│   └── 07.4 - Archivos de Sistema de Referencia (assets-system).md
+│   ├── 07.4 - Archivos de Sistema de Referencia (assets-system).md
+│   ├── 07.5 - Catalogo y Manual de Herramientas CLI del Playbook.md
+│   └── 07.6 - Estandar de Duo Repositorios y Arbol de Decision (git-setup vs shared_dir).md
+├── docs/adr/                                          # Registros de Decisiones de Arquitectura (ADR 0001, 0002)
+├── scripts/
+│   ├── omarchy-onboarding/onboard-machine.sh          # Asistente idempotente de onboarding (PADRE / HIJA)
+│   ├── forkhub/forkhub                                # CLI de auditoría y sincronización de forks (upstream + local)
+│   └── secrets/desbloquear-secretos.sh                # Bootstrap criptográfico con age
 ├── assets/
 │   ├── system/                                        # Espejo exacto de archivos /etc y /usr
-│   ├── niri_showcase_unixporn_720p.mp4
-│   ├── m2-res_1080p.mp4
-│   ├── nyxury-showcase.mp4
-│   └── nyxury-showcase-2.mp4
+│   └── keys/omarchy-personal-repo.pub.asc             # Clave GPG pública de [omarchy-personal]
 ├── AGENTS.md                                          # Reglas de operación para agentes IA
 └── README.md                                          # Portada principal
 ```
@@ -97,11 +150,14 @@ PJ-NIRI-rf-omarchy-workstation/
 
 | Usuario | Rol en la Máquina | Entorno de Escritorio | Dotfiles y Gestión |
 |---|---|---|---|
-| **`omarchy`** | Administración del Sistema | Omarchy / Hyprland base | Dotfiles privados (`sura-home`) |
+| **`<admin>`** (`rollo`, `omarchy`, etc.) | Administración del Sistema + Rol PADRE/HIJA | Omarchy / Hyprland base | Agnóstico del nombre de usuario (`wheel`) |
 | **`niri`** | Producción Wayland Clavis | `niri-edge` + Clavis Shell | `robert-flo/niri-dotfiles` (dotbare) |
-| **`sura`** | Testbench Visual Clavis | `niri-edge` + Clavis Shell | Desechable (recreable desde dotfiles) |
-| **`nyxuri`** | Producción Wayland Nyxuri | `niri-edge` + Noctalia Shell | `robert-flo/PJ-NIRI-fo-nyxuri` |
+| **`sura`** (`niri-test`) | Testbench Visual Clavis | `niri-edge` + Clavis Shell | Desechable (recreable desde dotfiles) |
+| **`nyxuri`** | Producción Wayland Nyxuri | `niri-edge` + Noctalia Shell | `robert-flo/PJ-NIRI-fo-nyxuri` (`personal`) |
 | **`nyxuri-test`** | Testbench Visual Nyxuri | `niri-edge` + Noctalia Shell | Desechable (recreable desde dotfiles) |
+| **`nyxuri-legacy`** | Escritorio Nyxuri Estable | `niri-edge` + Noctalia Stable | `ech678/Nyxuri` tag `v3.1.0` |
+| **`guest`** | Entorno Amnésico Volátil (RAM) | Hyprland / Waybar aislado | `tmpfs` 8 GB (destrucción al logout) |
+| **`sandbox`** | Entorno Amnésico GPU (Btrfs CoW) | Hyprland / Waybar aislado | Rollback instantáneo de subvolumen Btrfs |
 
 ---
 
