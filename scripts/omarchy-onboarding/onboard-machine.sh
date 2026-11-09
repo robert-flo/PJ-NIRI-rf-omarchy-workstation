@@ -52,6 +52,7 @@ SKIP_FORK_SYNC="${SKIP_FORK_SYNC:-false}"
 
 ROLE=""
 DRY_RUN=false
+FULL_CONVERGENCE=false
 CHANGES=0
 PACMAN_CONFIG_CHANGED=false
 EXTRA_USERS=()
@@ -275,6 +276,10 @@ while [[ $# -gt 0 ]]; do
       SKIP_FORK_SYNC=true
       shift
       ;;
+    --full)
+      FULL_CONVERGENCE=true
+      shift
+      ;;
     -n|--dry-run)
       DRY_RUN=true
       shift
@@ -411,31 +416,33 @@ for legacy_sf in "${LEGACY_WHEEL_FILES[@]}"; do
 done
 
 for u in "${UNIQUE_USERS[@]}"; do
-  SUDO_TARGET="${SUDOERS_D}/04_${u}"
-  TMP_SUDO="$(mktemp "${TMPDIR:-/tmp}/sudoers-04-${u}.XXXXXX")"
-  CLEANUP_FILES+=("$TMP_SUDO")
-  printf "%s\n" "${u} ALL=(ALL) NOPASSWD: ALL" "Defaults:${u} verifypw = any" > "$TMP_SUDO"
+  for prefix in "04_" "zz_04_"; do
+    SUDO_TARGET="${SUDOERS_D}/${prefix}${u}"
+    TMP_SUDO="$(mktemp "${TMPDIR:-/tmp}/sudoers-${prefix}${u}.XXXXXX")"
+    CLEANUP_FILES+=("$TMP_SUDO")
+    printf "%s\n" "${u} ALL=(ALL) NOPASSWD: ALL" "Defaults:${u} verifypw = any" > "$TMP_SUDO"
 
-  sudo_rule_ok=false
-  if [[ -r "$SUDO_TARGET" ]] && cmp -s "$TMP_SUDO" "$SUDO_TARGET"; then
-    sudo_rule_ok=true
-  elif [[ ! -r "$SUDOERS_D" && $EUID -ne 0 ]] && sudo -n cmp -s "$TMP_SUDO" "$SUDO_TARGET" 2>/dev/null; then
-    sudo_rule_ok=true
-  fi
-
-  if [[ "$sudo_rule_ok" == true ]]; then
-    log_ok "[✓] ya el usuario '$u' cuenta con sudo sin contraseña en $SUDO_TARGET."
-  else
-    log_change "[CAMBIO] Configurando sudo sin contraseña para '$u' en $SUDO_TARGET..."
-    CHANGES=$((CHANGES + 1))
-    if [[ "$DRY_RUN" == true ]]; then
-      run install -o root -g root -m 0440 "$TMP_SUDO" "$SUDO_TARGET"
-    else
-      mkdir -p "$SUDOERS_D"
-      visudo -cf "$TMP_SUDO" >/dev/null
-      install -o root -g root -m 0440 "$TMP_SUDO" "$SUDO_TARGET"
+    sudo_rule_ok=false
+    if [[ -r "$SUDO_TARGET" ]] && cmp -s "$TMP_SUDO" "$SUDO_TARGET"; then
+      sudo_rule_ok=true
+    elif [[ ! -r "$SUDOERS_D" && $EUID -ne 0 ]] && sudo -n cmp -s "$TMP_SUDO" "$SUDO_TARGET" 2>/dev/null; then
+      sudo_rule_ok=true
     fi
-  fi
+
+    if [[ "$sudo_rule_ok" == true ]]; then
+      log_ok "[✓] ya el usuario '$u' cuenta con sudo sin contraseña en $SUDO_TARGET."
+    else
+      log_change "[CAMBIO] Configurando sudo sin contraseña para '$u' en $SUDO_TARGET..."
+      CHANGES=$((CHANGES + 1))
+      if [[ "$DRY_RUN" == true ]]; then
+        run install -o root -g root -m 0440 "$TMP_SUDO" "$SUDO_TARGET"
+      else
+        mkdir -p "$SUDOERS_D"
+        visudo -cf "$TMP_SUDO" >/dev/null
+        install -o root -g root -m 0440 "$TMP_SUDO" "$SUDO_TARGET"
+      fi
+    fi
+  done
 done
 
 # 0.2 Despliegue declarativo de /etc/forkhub/repos.d/*.conf
@@ -1188,3 +1195,13 @@ else
 fi
 log_ok "Onboarding completado exitosamente en Modo: ${ROLE^^}."
 echo "=========================================================================="
+
+if [[ "$FULL_CONVERGENCE" == true && -x "${ONBOARD_SCRIPT_DIR}/converge-workstation.sh" ]]; then
+  echo ""
+  log_info "=== Ejecutando Convergencia Integral de Capas 01-07 (--full) ==="
+  if [[ "$DRY_RUN" == true ]]; then
+    bash "${ONBOARD_SCRIPT_DIR}/converge-workstation.sh" --dry-run
+  else
+    bash "${ONBOARD_SCRIPT_DIR}/converge-workstation.sh"
+  fi
+fi
