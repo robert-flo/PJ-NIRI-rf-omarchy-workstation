@@ -29,6 +29,7 @@ BUILD_DIR="${BUILD_DIR:-/opt/src}"
 DRY_RUN=false
 SKIP_BUILDS=false
 NON_INTERACTIVE=false
+UNLOCK_SECRETS=false
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -38,6 +39,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --skip-builds)
       SKIP_BUILDS=true
+      shift
+      ;;
+    --unlock-secrets|--secrets)
+      UNLOCK_SECRETS=true
       shift
       ;;
     --non-interactive|--batch|-y)
@@ -52,6 +57,7 @@ Uso:
 Opciones:
   -n, --dry-run          Simula y audita las capas sin modificar el sistema
   --skip-builds          Omite la compilación pesada de niri-edge / quickshell (Clavis)
+  --unlock-secrets       Fuerza el desbloqueo interactivo del paquete de secretos (age)
   --non-interactive, -y  Ejecución desatendida sin prompts (hereda credenciales del admin)
   -h, --help             Muestra esta ayuda
 EOF
@@ -177,11 +183,11 @@ fi
 SECRETS_SCRIPT="${REPO_ROOT}/scripts/secrets/desbloquear-secretos.sh"
 SECRETS_ARCHIVE="${REPO_ROOT}/scripts/secrets/secrets.tar.gz.age"
 if [[ -f "$SECRETS_ARCHIVE" && -x "$SECRETS_SCRIPT" && "$DRY_RUN" == false ]]; then
-  if [[ ! -f "/etc/rclone/rclone.conf" || ! -f "$INVOKING_HOME/.ssh/id_ed25519" ]]; then
+  if [[ "$UNLOCK_SECRETS" == true || ! -f "/etc/rclone/rclone.conf" || ! -f "$INVOKING_HOME/.ssh/id_ed25519" ]]; then
     log_info "Desbloqueando paquete de secretos cifrados (${SECRETS_ARCHIVE})..."
     bash "$SECRETS_SCRIPT" "$SECRETS_ARCHIVE" || log_warn "[!] No se pudo descifrar el paquete de secretos (verifique su clave de age)."
   else
-    log_ok "[✓] ya los secretos esenciales (/etc/rclone/rclone.conf y ~/.ssh) están presentes."
+    log_ok "[✓] ya los secretos esenciales (/etc/rclone/rclone.conf y ~/.ssh) están presentes (usa --unlock-secrets para re-desbloquear)."
   fi
 fi
 
@@ -517,8 +523,11 @@ else
   log_ok "[✓] ya todos los paquetes de [omarchy-personal] y el Toolchain oficial están instalados."
 fi
 
-# Paquetes de AUR requeridos por Clavis / Nyxuri / Dotfiles
-AUR_PKGS=(qt6-m3shapes-git libcava ttf-lxgw-wenkai-screen mpvpaper-git dotbare)
+# Paquetes de AUR requeridos por Clavis / Nyxuri / Dotfiles y Ecosistema Google/Android
+AUR_PKGS=(
+  qt6-m3shapes-git libcava ttf-lxgw-wenkai-screen mpvpaper-git dotbare
+  android-studio-canary google-chrome google-cloud-cli firebase-tools-bin
+)
 MISSING_AUR=()
 for apkg in "${AUR_PKGS[@]}"; do
   if ! pacman -Qi "$apkg" >/dev/null 2>&1; then
