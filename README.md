@@ -17,27 +17,24 @@ Arquitectura integral por capas, diseño de sistemas y bootstrap completo para u
 
 ---
 
-## 🚀 Inicio Rápido (Cómo Comenzar en una Máquina Nueva o Existente)
+## 🚀 Inicio Rápido (Un Solo Comando con `make` o `onboard-machine.sh`)
 
-### 1. Puesta en Marcha desde la Terminal (`onboard-machine.sh`)
+Para poner en marcha la estación de trabajo de forma 100% reproducible y desatendida:
 
-Clona este repositorio y ejecuta el asistente idempotente de onboarding según el rol de tu máquina (funciona con cualquier nombre de usuario administrador, ej. `rollo`, `omarchy`, etc.):
-
+### Opción A: Mediante `make` (Recomendada)
 ```bash
-# 1. (Opcional) Si aún no has desbloqueado tus credenciales SSH/GitHub CLI cifradas con age:
-./scripts/secrets/desbloquear-secretos.sh
+make install          # Ejecuta la instalación integral completa (Modo PADRE + Capas 01 a 07)
+make audit            # Simula y audita todas las capas sin tocar el sistema (Dry-run)
+make doctor           # Diagnóstico del estado del sistema, Nyxuri, Clavis y Display Manager
+```
 
-# 2A. Estación de Desarrollo (Modo PADRE / DEV — clona /z/pj-omarchy y enlaza omarchy dev link):
-sudo ./scripts/omarchy-onboarding/onboard-machine.sh --padre
-
-# 2B. Instalación Completa (Modo PADRE + Convergencia de Capas 01 a 07 en un solo comando):
+### Opción B: Mediante script directo
+```bash
+# 1. Instalación Completa en Modo PADRE (Bootstrapping base + Capas 01 a 07):
 sudo ./scripts/omarchy-onboarding/onboard-machine.sh --padre --full
 
-# 2C. Máquina Cliente / Producción (Modo HIJA — instala paquetes de [omarchy-personal]):
-sudo ./scripts/omarchy-onboarding/onboard-machine.sh --hija
-
-# 2D. Simulación sin modificar el sistema (Dry-Run):
-./scripts/omarchy-onboarding/onboard-machine.sh --padre --full --dry-run
+# 2. Instalación Completa en Modo HIJA:
+sudo ./scripts/omarchy-onboarding/onboard-machine.sh --hija --full
 ```
 
 **¿Qué ejecuta automáticamente este comando?**
