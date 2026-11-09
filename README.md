@@ -30,11 +30,14 @@ Clona este repositorio y ejecuta el asistente idempotente de onboarding según e
 # 2A. Estación de Desarrollo (Modo PADRE / DEV — clona /z/pj-omarchy y enlaza omarchy dev link):
 sudo ./scripts/omarchy-onboarding/onboard-machine.sh --padre
 
-# 2B. Máquina Cliente / Producción (Modo HIJA — instala paquetes de [omarchy-personal]):
+# 2B. Instalación Completa (Modo PADRE + Convergencia de Capas 01 a 07 en un solo comando):
+sudo ./scripts/omarchy-onboarding/onboard-machine.sh --padre --full
+
+# 2C. Máquina Cliente / Producción (Modo HIJA — instala paquetes de [omarchy-personal]):
 sudo ./scripts/omarchy-onboarding/onboard-machine.sh --hija
 
-# 2C. Simulación sin modificar el sistema (Dry-Run):
-./scripts/omarchy-onboarding/onboard-machine.sh --padre --dry-run
+# 2D. Simulación sin modificar el sistema (Dry-Run):
+./scripts/omarchy-onboarding/onboard-machine.sh --padre --full --dry-run
 ```
 
 **¿Qué ejecuta automáticamente este comando?**
