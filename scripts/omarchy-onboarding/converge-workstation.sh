@@ -393,6 +393,75 @@ else
   log_ok "[✓] ya el tema SDDM catppuccin-mocha-mauve está instalado."
 fi
 
+# Garantizar grupos multimedia, hardware y adbusers para el usuario admin
+if id "$INVOKING_USER" >/dev/null 2>&1; then
+  for grp in wheel audio input video kvm storage render adbusers; do
+    if getent group "$grp" >/dev/null 2>&1 && ! id -nG "$INVOKING_USER" | tr ' ' '\n' | grep -qx "$grp"; then
+      log_change "[CAMBIO] Añadiendo administrador '$INVOKING_USER' al grupo '$grp'..."
+      CHANGES=$((CHANGES + 1))
+      run usermod -aG "$grp" "$INVOKING_USER"
+    fi
+  done
+fi
+
+# Sincronizar variables Android, symlink ~/Android/Sdk y fish en todos los perfiles de usuario
+ALL_ACCOUNTS=("$INVOKING_USER" "${WORKSTATION_USERS[@]}" guest sandbox)
+for acc in "${ALL_ACCOUNTS[@]}"; do
+  acc_home=$(getent passwd "$acc" 2>/dev/null | cut -d: -f6)
+  if [[ -n "$acc_home" && -d "$acc_home" ]]; then
+    acc_bashrc="$acc_home/.bashrc"
+    if [[ -f "$acc_bashrc" ]] && ! grep -q "ANDROID_HOME" "$acc_bashrc"; then
+      log_change "[CAMBIO] Inyectando variables ANDROID_HOME en $acc_bashrc..."
+      CHANGES=$((CHANGES + 1))
+      if [[ "$DRY_RUN" == false ]]; then
+        if grep -q "\[\[ \$- != \*i\* \]\] && return" "$acc_bashrc"; then
+          awk '
+            /\[\[ \$- != \*i\* \]\] && return/ {
+              print "# --- ANDROID & JAVA ENVIRONMENT ---"
+              print "export ANDROID_HOME=\"$HOME/Android/Sdk\""
+              print "export ANDROID_USER_HOME=\"$HOME/.android\""
+              print "export ANDROID_PROJECTS_DIR=\"/z/android-projects\""
+              print "export PATH=\"$PATH:$ANDROID_HOME/emulator:$ANDROID_HOME/platform-tools:$ANDROID_HOME/cmdline-tools/latest/bin:$HOME/.local/bin\""
+              print "# --- FIN ANDROID & JAVA ENVIRONMENT ---\n"
+            }
+            { print }
+          ' "$acc_bashrc" > "$acc_bashrc.tmp" && mv "$acc_bashrc.tmp" "$acc_bashrc"
+        else
+          cat << 'EOF' >> "$acc_bashrc"
+
+# --- ANDROID & JAVA ENVIRONMENT ---
+export ANDROID_HOME="$HOME/Android/Sdk"
+export ANDROID_USER_HOME="$HOME/.android"
+export ANDROID_PROJECTS_DIR="/z/android-projects"
+export PATH="$PATH:$ANDROID_HOME/emulator:$ANDROID_HOME/platform-tools:$ANDROID_HOME/cmdline-tools/latest/bin:$HOME/.local/bin"
+# --- FIN ANDROID & JAVA ENVIRONMENT ---
+EOF
+        fi
+        chown "$acc:$acc" "$acc_bashrc" 2>/dev/null || true
+      fi
+    fi
+
+    # Symlink ~/Android/Sdk -> /opt/android-sdk
+    if [[ ! -e "$acc_home/Android/Sdk" ]]; then
+      if [[ "$DRY_RUN" == false ]]; then
+        mkdir -p "$acc_home/Android"
+        ln -sfn /opt/android-sdk "$acc_home/Android/Sdk"
+        chown -h "$acc:$acc" "$acc_home/Android" "$acc_home/Android/Sdk" 2>/dev/null || true
+      fi
+    fi
+
+    # Sincronizar plantilla de fish si existe
+    acc_fish_d="$acc_home/.config/fish/conf.d"
+    if [[ -f /etc/skel/.config/fish/conf.d/android.fish && ! -f "$acc_fish_d/android.fish" ]]; then
+      if [[ "$DRY_RUN" == false ]]; then
+        mkdir -p "$acc_fish_d"
+        cp -u /etc/skel/.config/fish/conf.d/android.fish "$acc_fish_d/android.fish" 2>/dev/null || true
+        chown -R "$acc:$acc" "$acc_home/.config" 2>/dev/null || true
+      fi
+    fi
+  fi
+done
+
 # ==============================================================================
 # CAPA 02: Almacenamiento Compartido (/z, /zt, /z-drive), Wallpapers y synchub
 # ==============================================================================
@@ -489,7 +558,8 @@ PERSONAL_PKGS=(
 )
 
 OFFICIAL_PKGS=(
-  base-devel clang cmake ninja rust go jdk-openjdk pnpm
+  base-devel clang cmake ninja rust go pnpm
+  jdk21-openjdk jdk17-openjdk android-tools android-udev kotlin gradle
   python-evdev python-pyudev python-gobject python-cairo
   inotify-tools age rclone fuse3
   ghostty kitty alacritty zsh fish yazi atuin fastfetch zed mission-center thunderbird
@@ -522,6 +592,18 @@ if [[ ${#MISSING_PKGS[@]} -gt 0 ]]; then
   run pacman -S --needed --noconfirm "${MISSING_PKGS[@]}"
 else
   log_ok "[✓] ya todos los paquetes de [omarchy-personal] y el Toolchain oficial están instalados."
+fi
+
+# Garantizar Java 21 como runtime por defecto del sistema
+if command -v archlinux-java >/dev/null 2>&1; then
+  cur_java="$(archlinux-java get 2>/dev/null || echo "")"
+  if [[ "$cur_java" != "java-21-openjdk" && -d "/usr/lib/jvm/java-21-openjdk" ]]; then
+    log_change "[CAMBIO] Configurando Java 21 como entorno JVM por defecto del sistema..."
+    CHANGES=$((CHANGES + 1))
+    if [[ "$DRY_RUN" == false ]]; then
+      archlinux-java set java-21-openjdk 2>/dev/null || true
+    fi
+  fi
 fi
 
 # Paquetes de AUR requeridos por Clavis / Nyxuri / Dotfiles y Ecosistema Google/Android
@@ -823,7 +905,7 @@ done
 
 if [[ "$DRY_RUN" == false ]]; then
   systemctl daemon-reload
-  for unit_en in forkhub.timer niri-update.timer z-perms.service z-perms.timer sandbox-btrfs-boot-reset.service; do
+  for unit_en in forkhub.timer niri-update.timer z-perms.service z-perms.timer z-drive-perms.timer android-sdk-perms.timer android-projects-perms.timer sandbox-btrfs-boot-reset.service; do
     if ! systemctl is-enabled --quiet "$unit_en" 2>/dev/null; then
       log_change "[CAMBIO] Habilitando unidad systemd $unit_en..."
       CHANGES=$((CHANGES + 1))
