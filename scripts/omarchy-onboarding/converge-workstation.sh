@@ -173,6 +173,18 @@ else
   fi
 fi
 
+# 1.2 Desbloqueo y Aprovisionamiento de Secretos (age) en memoria segura
+SECRETS_SCRIPT="${REPO_ROOT}/scripts/secrets/desbloquear-secretos.sh"
+SECRETS_ARCHIVE="${REPO_ROOT}/scripts/secrets/secrets.tar.gz.age"
+if [[ -f "$SECRETS_ARCHIVE" && -x "$SECRETS_SCRIPT" && "$DRY_RUN" == false ]]; then
+  if [[ ! -f "/etc/rclone/rclone.conf" || ! -f "$INVOKING_HOME/.ssh/id_ed25519" ]]; then
+    log_info "Desbloqueando paquete de secretos cifrados (${SECRETS_ARCHIVE})..."
+    bash "$SECRETS_SCRIPT" "$SECRETS_ARCHIVE" || log_warn "[!] No se pudo descifrar el paquete de secretos (verifique su clave de age)."
+  else
+    log_ok "[✓] ya los secretos esenciales (/etc/rclone/rclone.conf y ~/.ssh) están presentes."
+  fi
+fi
+
 # 1.2 Fix Intel i915 (FIFO Underrun / SAGV)
 if lspci 2>/dev/null | grep -iE 'vga|3d|display' | grep -qi 'intel'; then
   if [[ -f /etc/modprobe.d/i915.conf ]] && cmp -s "$SYS_ASSETS/etc/modprobe.d/i915.conf" /etc/modprobe.d/i915.conf; then
@@ -754,8 +766,9 @@ if id omarchy-test >/dev/null 2>&1; then
     CHANGES=$((CHANGES + 1))
     if [[ "$DRY_RUN" == false ]]; then
       mkdir -p "$ot_home/.config"
-      if [[ -d "$OMARCHY_PATH/config/hypr" ]]; then
-        cp -r "$OMARCHY_PATH/config/hypr" "$ot_home/.config/"
+      omarchy_src="${OMARCHY_PATH:-/z/fo-omarchy}"
+      if [[ -d "$omarchy_src/config/hypr" ]]; then
+        cp -r "$omarchy_src/config/hypr" "$ot_home/.config/"
       elif [[ -d "/home/$INVOKING_USER/.config/hypr" ]]; then
         cp -r "/home/$INVOKING_USER/.config/hypr" "$ot_home/.config/"
       fi
