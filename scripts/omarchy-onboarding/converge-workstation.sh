@@ -318,6 +318,13 @@ done
 log_ok "[✓] ya los perfiles multi-usuario (${WORKSTATION_USERS[*]}) están aprovisionados."
 
 # 1.4 Usuarios Amnésicos (guest UID 1007 y sandbox UID 1008) y Plantilla /etc/amnesic-skel
+install_sys_file "/etc/pam.d/su" "0644" "root:root"
+install_sys_file "/etc/pam.d/system-login" "0644" "root:root"
+install_sys_file "/etc/ufw/before.rules" "0640" "root:root"
+if command -v ufw >/dev/null 2>&1 && systemctl is-active --quiet ufw 2>/dev/null; then
+  run ufw reload >/dev/null 2>&1 || true
+fi
+
 while IFS= read -r -d '' amn_f; do
   rel="${amn_f#"$SYS_ASSETS"}"
   install_sys_file "$rel" "0644" "root:root"
@@ -760,7 +767,9 @@ done
 for sh_bin in synchub sync-all sync-hub-bar sync-idalia sync-status sync-tries sync-tries-watcher sync-uploads-gracie upload-moved-gdrive upload-moved-shutdown-supervisor watch-moved; do
   install_sys_file "/usr/local/bin/${sh_bin}" "0755" "root:root"
 done
-for sh_unit in synchub@.service synchub@.timer synchub-btrfs-attach.service rclone-gdrive-mount.service; do
+for sh_unit in synchub@.service synchub@.timer synchub-btrfs-attach.service rclone-gdrive-mount.service \
+               sync-idalia.service sync-idalia.timer sync-tries.service sync-tries.timer sync-tries-watcher.service \
+               sync-uploads-gracie.service sync-uploads-gracie.timer; do
   install_sys_file "/etc/systemd/system/${sh_unit}" "0644" "root:root"
 done
 install_sys_file "/etc/udev/rules.d/99-almacen-btrfs.rules" "0644" "root:root"
@@ -786,7 +795,8 @@ OFFICIAL_PKGS=(
   base-devel clang cmake ninja rust go pnpm
   jdk21-openjdk jdk17-openjdk android-tools android-udev kotlin gradle
   python-evdev python-pyudev python-gobject python-cairo
-  inotify-tools age rclone fuse3
+  inotify-tools age rclone fuse3 git-delta sassc
+  brave-origin-bin zen-browser-bin
   ghostty kitty alacritty zsh fish yazi atuin fastfetch zed mission-center thunderbird
   quickshell qt6-base qt6-declarative qt6-svg qt6-wayland qt6-5compat
   qt6-lottie qt6-location qt6-positioning qt6-tools maplibre-native-qt qtkeychain-qt6
@@ -794,7 +804,7 @@ OFFICIAL_PKGS=(
   imagemagick xdg-terminal-exec wl-clipboard slurp grim gpu-screen-recorder ffmpeg
   libpulse hyprpicker flatpak waybar fuzzel mako swaybg swaylock xwayland-satellite
   xdg-desktop-portal-gnome polkit-gnome playerctl cliphist libqalculate wlsunset
-  gtk-layer-shell cava ttf-ibm-plex
+  gtk-layer-shell cava ttf-ibm-plex ttf-ibmplex-mono-nerd
 )
 
 MISSING_PKGS=()
@@ -972,7 +982,7 @@ if [[ "$SKIP_BUILDS" == false ]]; then
   fi
 fi
 
-# 4.4 Tema MacTahoe (iconos y cursores)
+# 4.4 Tema MacTahoe (iconos, cursores y temas GTK)
 if [[ ! -d /usr/share/icons/MacTahoe-dark ]]; then
   log_change "[CAMBIO] Instalando iconos y cursores MacTahoe en /usr/share/icons..."
   CHANGES=$((CHANGES + 1))
@@ -986,6 +996,51 @@ if [[ ! -d /usr/share/icons/MacTahoe-dark ]]; then
   fi
 else
   log_ok "[✓] ya el tema MacTahoe está instalado en /usr/share/icons."
+fi
+
+if [[ ! -d /usr/share/themes/MacTahoe-Dark ]]; then
+  log_change "[CAMBIO] Instalando tema MacTahoe GTK en /usr/share/themes..."
+  CHANGES=$((CHANGES + 1))
+  if [[ "$DRY_RUN" == false ]]; then
+    tmp_mgt="$(mktemp -d)"
+    if git clone --depth 1 https://github.com/vinceliuice/MacTahoe-gtk-theme.git "$tmp_mgt/MacTahoe" 2>/dev/null; then
+      (cd "$tmp_mgt/MacTahoe" && ./install.sh -d /usr/share/themes) || true
+    fi
+    rm -rf "$tmp_mgt"
+  fi
+else
+  log_ok "[✓] ya el tema MacTahoe GTK está instalado en /usr/share/themes."
+fi
+
+# Componentes de Shell Clavis: clavis-fish-theme y my_zsh_prompt
+clone_or_update_fork "clavis-fish-theme" "https://github.com/robert-flo/clavis-fish-theme.git" "personal" "https://github.com/StatIndet/clavis-fish-theme.git" || true
+if [[ ! -x /usr/local/bin/clavis-fish-theme ]]; then
+  log_change "[CAMBIO] Compilando e instalando clavis-fish-theme desde $BUILD_DIR/clavis-fish-theme..."
+  CHANGES=$((CHANGES + 1))
+  if [[ "$DRY_RUN" == false && -d "$BUILD_DIR/clavis-fish-theme" ]]; then
+    (
+      cd "$BUILD_DIR/clavis-fish-theme"
+      sudo -u "$INVOKING_USER" env CARGO_NET_GIT_FETCH_WITH_CLI=true cargo build --release
+      install -Dm755 target/release/clavis-fish-theme /usr/local/bin/clavis-fish-theme
+    )
+  fi
+else
+  log_ok "[✓] ya clavis-fish-theme está compilado e instalado en /usr/local/bin/clavis-fish-theme."
+fi
+
+clone_or_update_fork "my_zsh_prompt" "https://github.com/robert-flo/my_zsh_prompt.git" "personal" "https://github.com/StatIndet/my_zsh_prompt.git" || true
+if [[ ! -x /usr/local/bin/prompt ]]; then
+  log_change "[CAMBIO] Compilando e instalando prompt desde $BUILD_DIR/my_zsh_prompt..."
+  CHANGES=$((CHANGES + 1))
+  if [[ "$DRY_RUN" == false && -d "$BUILD_DIR/my_zsh_prompt" ]]; then
+    (
+      cd "$BUILD_DIR/my_zsh_prompt"
+      sudo -u "$INVOKING_USER" g++ -O3 -std=c++17 prompt.cpp -o prompt
+      install -Dm755 prompt /usr/local/bin/prompt
+    )
+  fi
+else
+  log_ok "[✓] ya prompt está compilado e instalado en /usr/local/bin/prompt."
 fi
 
 # 4.5 Nyxuri Engine (Edge + Stable) y scripts de actualización
@@ -1011,6 +1066,13 @@ install_sys_file "/etc/systemd/system/niri-update.timer" "0644" "root:root"
 install_sys_file "/etc/greetd/config.toml" "0644" "root:root"
 install_sys_file "/etc/polkit-1/rules.d/50-noctalia-greeter.rules" "0644" "root:root"
 install_sys_file "/usr/share/applications/top.imsyy.splayer_next.desktop" "0644" "root:root"
+
+# Registrar sesión Wayland omarchy en el display manager si existe en /usr/local
+if [[ -f /usr/local/share/wayland-sessions/omarchy.desktop && ! -e /usr/share/wayland-sessions/omarchy.desktop ]]; then
+  log_change "[CAMBIO] Registrando sesión Wayland omarchy en /usr/share/wayland-sessions..."
+  CHANGES=$((CHANGES + 1))
+  run ln -sfn /usr/local/share/wayland-sessions/omarchy.desktop /usr/share/wayland-sessions/omarchy.desktop
+fi
 
 # Configurar Greetd + Noctalia Greeter como Display Manager por defecto
 if ! systemctl is-enabled greetd.service >/dev/null 2>&1; then
@@ -1065,6 +1127,14 @@ for nyx_u in nyxuri nyxuri-test; do
       fi
     else
       log_ok "[✓] ya el usuario '$nyx_u' cuenta con su configuración de Nyxuri."
+    fi
+
+    # Garantizar symlink de wallpapers compartidos si el directorio noctalia existe
+    if [[ -d "$u_home/.config/noctalia" && ! -e "$u_home/.config/noctalia/wallpapers" ]]; then
+      log_change "[CAMBIO] Vinculando /z/wallpaper-collection en noctalia para '$nyx_u'..."
+      CHANGES=$((CHANGES + 1))
+      run ln -sfn /z/wallpaper-collection "$u_home/.config/noctalia/wallpapers"
+      run chown -h "$nyx_u:$nyx_u" "$u_home/.config/noctalia/wallpapers"
     fi
   fi
 done
@@ -1128,9 +1198,18 @@ for fk_conf in "$REPO_ROOT"/scripts/forkhub/repos.d/*.conf; do
   install_sys_file "/etc/forkhub/repos.d/$(basename "$fk_conf")" "0664" "root:wheel"
 done
 
+# CLI global para onboarding y convergencia
+if [[ ! -e /usr/local/bin/omarchy-onboard ]]; then
+  log_change "[CAMBIO] Vinculando CLI global omarchy-onboard -> $REPO_ROOT/scripts/omarchy-onboarding/onboard-machine.sh..."
+  CHANGES=$((CHANGES + 1))
+  run ln -sfn "$REPO_ROOT/scripts/omarchy-onboarding/onboard-machine.sh" /usr/local/bin/omarchy-onboard
+fi
+
 if [[ "$DRY_RUN" == false ]]; then
   systemctl daemon-reload
-  for unit_en in forkhub.timer niri-update.timer z-perms.service z-perms.timer z-drive-perms.timer android-sdk-perms.timer android-projects-perms.timer sandbox-btrfs-boot-reset.service; do
+  for unit_en in forkhub.timer niri-update.timer z-perms.service z-perms.timer z-drive-perms.timer \
+                 android-sdk-perms.timer android-projects-perms.timer sandbox-btrfs-boot-reset.service \
+                 sync-tries.timer sync-idalia.timer sync-uploads-gracie.timer; do
     if ! systemctl is-enabled --quiet "$unit_en" 2>/dev/null; then
       log_change "[CAMBIO] Habilitando unidad systemd $unit_en..."
       CHANGES=$((CHANGES + 1))
