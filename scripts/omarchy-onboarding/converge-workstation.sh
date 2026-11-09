@@ -927,12 +927,19 @@ EOF
       fi
     fi
 
-    # Aplicar gsettings (color-scheme, tema GTK y cursor) si el bus D-Bus de usuario está disponible
-    if [[ -S "/run/user/$u_uid/bus" && "$DRY_RUN" == false ]]; then
-      sudo -u "$clavis_u" env DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$u_uid/bus" gsettings set org.gnome.desktop.interface color-scheme 'prefer-light' 2>/dev/null || true
-      sudo -u "$clavis_u" env DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$u_uid/bus" gsettings set org.gnome.desktop.interface gtk-theme 'MacTahoe-Dark' 2>/dev/null || true
-      sudo -u "$clavis_u" env DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$u_uid/bus" gsettings set org.gnome.desktop.interface icon-theme 'MacTahoe-dark' 2>/dev/null || true
-      sudo -u "$clavis_u" env DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$u_uid/bus" gsettings set org.gnome.desktop.interface cursor-theme 'MacTahoe-dark' 2>/dev/null || true
+    # Aplicar gsettings (color-scheme, tema GTK y cursor)
+    if [[ "$DRY_RUN" == false ]]; then
+      if [[ -S "/run/user/$u_uid/bus" ]]; then
+        sudo -u "$clavis_u" env DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$u_uid/bus" gsettings set org.gnome.desktop.interface color-scheme 'prefer-light' 2>/dev/null || true
+        sudo -u "$clavis_u" env DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$u_uid/bus" gsettings set org.gnome.desktop.interface gtk-theme 'MacTahoe-Dark' 2>/dev/null || true
+        sudo -u "$clavis_u" env DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$u_uid/bus" gsettings set org.gnome.desktop.interface icon-theme 'MacTahoe-dark' 2>/dev/null || true
+        sudo -u "$clavis_u" env DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$u_uid/bus" gsettings set org.gnome.desktop.interface cursor-theme 'MacTahoe-dark' 2>/dev/null || true
+      elif command -v dbus-run-session >/dev/null 2>&1; then
+        sudo -u "$clavis_u" dbus-run-session gsettings set org.gnome.desktop.interface color-scheme 'prefer-light' 2>/dev/null || true
+        sudo -u "$clavis_u" dbus-run-session gsettings set org.gnome.desktop.interface gtk-theme 'MacTahoe-Dark' 2>/dev/null || true
+        sudo -u "$clavis_u" dbus-run-session gsettings set org.gnome.desktop.interface icon-theme 'MacTahoe-dark' 2>/dev/null || true
+        sudo -u "$clavis_u" dbus-run-session gsettings set org.gnome.desktop.interface cursor-theme 'MacTahoe-dark' 2>/dev/null || true
+      fi
     fi
   fi
 done
