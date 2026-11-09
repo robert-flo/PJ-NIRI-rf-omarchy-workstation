@@ -1112,6 +1112,7 @@ if [[ -d "$BUILD_DIR/nyxuri" && "$DRY_RUN" == false ]]; then
   chmod +x "$BUILD_DIR/nyxuri/nyxuri/launcher.sh" "$BUILD_DIR/nyxuri/shell/nyxuri-shell" 2>/dev/null || true
   ln -sfn "$BUILD_DIR/nyxuri/nyxuri/launcher.sh" /usr/local/bin/nyxuri
   ln -sfn "$BUILD_DIR/nyxuri/shell/nyxuri-shell" /usr/local/bin/nyxuri-shell
+  ln -sfn "$BUILD_DIR/nyxuri" /z/nyxuri
 fi
 
 install_sys_file "/usr/local/bin/update-niri-desktop.sh" "0755" "root:root"
@@ -1247,18 +1248,53 @@ for nyx_u in nyxuri nyxuri-test; do
             /usr/local/bin/nyxuri on "$unit" || true
           done
           /usr/local/bin/nyxuri shell set nyxuri-shell /usr/local/bin/nyxuri-shell || true
+          python3 -c "import sys; sys.path.insert(0, \"'"$BUILD_DIR"'/nyxuri\"); from nyxuri.deploy.templates import _phase_render_templates; _phase_render_templates()" || true
         ' || true
       fi
     else
       log_ok "[✓] ya el usuario '$nyx_u' cuenta con su configuración de Nyxuri."
     fi
 
-    # Garantizar symlink de wallpapers compartidos si el directorio noctalia existe
+    # Garantizar symlinks de wallpapers compartidos y video en noctalia y Pictures
     if [[ -d "$u_home/.config/noctalia" && ! -e "$u_home/.config/noctalia/wallpapers" ]]; then
       log_change "[CAMBIO] Vinculando /z/wallpaper-collection en noctalia para '$nyx_u'..."
       CHANGES=$((CHANGES + 1))
       run ln -sfn /z/wallpaper-collection "$u_home/.config/noctalia/wallpapers"
       run chown -h "$nyx_u:$nyx_u" "$u_home/.config/noctalia/wallpapers"
+    fi
+    if [[ -d "$u_home/Pictures/Wallpapers" ]]; then
+      if [[ ! -e "$u_home/Pictures/Wallpapers/collection" ]]; then
+        run ln -sfn /z/wallpaper-collection "$u_home/Pictures/Wallpapers/collection"
+        run chown -h "$nyx_u:$nyx_u" "$u_home/Pictures/Wallpapers/collection"
+      fi
+      if [[ ! -e "$u_home/Pictures/Wallpapers/video" ]]; then
+        run ln -sfn /z/wallpaper-collection/video "$u_home/Pictures/Wallpapers/video"
+        run chown -h "$nyx_u:$nyx_u" "$u_home/Pictures/Wallpapers/video"
+      fi
+    fi
+
+    # Garantizar symlink de efectos Niri y noctalia.kdl
+    if [[ -f "$u_home/.config/niri/effects_normal.kdl" && ! -e "$u_home/.config/niri/effects.kdl" ]]; then
+      run ln -sfn "$u_home/.config/niri/effects_normal.kdl" "$u_home/.config/niri/effects.kdl"
+      run chown -h "$nyx_u:$nyx_u" "$u_home/.config/niri/effects.kdl"
+    fi
+    if [[ -f "$u_home/.config/niri/colors.kdl" && ! -e "$u_home/.config/niri/noctalia.kdl" ]]; then
+      run ln -sfn colors.kdl "$u_home/.config/niri/noctalia.kdl"
+      run chown -h "$nyx_u:$nyx_u" "$u_home/.config/niri/noctalia.kdl"
+    fi
+
+    # Sembrar paleta inicial Matugen si falta colors.json
+    if [[ ! -f "$u_home/.local/state/quickshell/user/generated/nyxuri/colors.json" && -f "$BUILD_DIR/nyxuri/shell/scripts/theme/generate-matugen-colors.sh" ]]; then
+      log_change "[CAMBIO] Generando paleta Matugen inicial para '$nyx_u'..."
+      CHANGES=$((CHANGES + 1))
+      if [[ "$DRY_RUN" == false ]]; then
+        wp_img="/z/wallpaper-collection/anime_car_sunset.webp"
+        [[ -f "$u_home/Pictures/Wallpapers/fuji_evening.webp" ]] && wp_img="$u_home/Pictures/Wallpapers/fuji_evening.webp"
+        sudo -u "$nyx_u" env HOME="$u_home" bash "$BUILD_DIR/nyxuri/shell/scripts/theme/generate-matugen-colors.sh" \
+          --image "$wp_img" \
+          --mode light \
+          --generated-home "$u_home/.local/state/quickshell/user/generated" || true
+      fi
     fi
   fi
 done
@@ -1279,6 +1315,26 @@ main()
     fi
   else
     log_ok "[✓] ya el usuario 'nyxuri-legacy' cuenta con su configuración estable."
+  fi
+
+  # Garantizar enlaces de efectos y wallpapers en nyxuri-legacy
+  if [[ -f "$leg_home/.config/niri/effects_normal.kdl" && ! -e "$leg_home/.config/niri/effects.kdl" ]]; then
+    run ln -sfn "$leg_home/.config/niri/effects_normal.kdl" "$leg_home/.config/niri/effects.kdl"
+    run chown -h "nyxuri-legacy:nyxuri-legacy" "$leg_home/.config/niri/effects.kdl"
+  fi
+  if [[ -d "$leg_home/.config/noctalia" && ! -e "$leg_home/.config/noctalia/wallpapers" ]]; then
+    run ln -sfn /z/wallpaper-collection "$leg_home/.config/noctalia/wallpapers"
+    run chown -h "nyxuri-legacy:nyxuri-legacy" "$leg_home/.config/noctalia/wallpapers"
+  fi
+  if [[ -d "$leg_home/Pictures/Wallpapers" ]]; then
+    if [[ ! -e "$leg_home/Pictures/Wallpapers/collection" ]]; then
+      run ln -sfn /z/wallpaper-collection "$leg_home/Pictures/Wallpapers/collection"
+      run chown -h "nyxuri-legacy:nyxuri-legacy" "$leg_home/Pictures/Wallpapers/collection"
+    fi
+    if [[ ! -e "$leg_home/Pictures/Wallpapers/video" ]]; then
+      run ln -sfn /z/wallpaper-collection/video "$leg_home/Pictures/Wallpapers/video"
+      run chown -h "nyxuri-legacy:nyxuri-legacy" "$leg_home/Pictures/Wallpapers/video"
+    fi
   fi
 fi
 
