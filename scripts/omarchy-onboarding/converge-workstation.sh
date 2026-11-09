@@ -671,6 +671,16 @@ install_sys_file "/etc/greetd/config.toml" "0644" "root:root"
 install_sys_file "/etc/polkit-1/rules.d/50-noctalia-greeter.rules" "0644" "root:root"
 install_sys_file "/usr/share/applications/top.imsyy.splayer_next.desktop" "0644" "root:root"
 
+# Configurar Greetd + Noctalia Greeter como Display Manager por defecto
+if ! systemctl is-enabled greetd.service >/dev/null 2>&1; then
+  log_change "[CAMBIO] Habilitando Greetd (Noctalia Greeter) como Display Manager por defecto..."
+  CHANGES=$((CHANGES + 1))
+  run systemctl disable sddm.service || true
+  run systemctl enable greetd.service || true
+else
+  log_ok "[✓] ya Greetd (Noctalia Greeter) está habilitado como Display Manager por defecto."
+fi
+
 # 4.6 Inicialización idempotente de Dotfiles en Usuarios Nuevos (solo si aún no están inicializados)
 for clavis_u in niri niri-test; do
   if id "$clavis_u" >/dev/null 2>&1; then
