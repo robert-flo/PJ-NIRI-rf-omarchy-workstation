@@ -801,6 +801,23 @@ else
   log_ok "[✓] ya MacTahoe está configurado como tema por defecto a nivel de sistema (GLib/DConf/GTK)."
 fi
 
+# Configuración global del sistema: Defaults de Navegador (Zen Browser) y políticas
+if [[ ! -f /etc/xdg/mimeapps.list || ! -f /etc/environment.d/10-default-browser.conf || ! -f /opt/zen-browser-bin/distribution/policies.json ]] || ! grep -q "zen.desktop" /etc/xdg/mimeapps.list; then
+  log_change "[CAMBIO] Desplegando Zen Browser como navegador por defecto del sistema y políticas MacTahoe..."
+  CHANGES=$((CHANGES + 1))
+  if [[ "$DRY_RUN" == false ]]; then
+    if [[ -d "$ASSETS_SYS" ]]; then
+      install -Dm644 "$ASSETS_SYS/etc/xdg/mimeapps.list" "/etc/xdg/mimeapps.list"
+      install -Dm644 "$ASSETS_SYS/etc/environment.d/10-default-browser.conf" "/etc/environment.d/10-default-browser.conf"
+      if [[ -d /opt/zen-browser-bin/distribution ]]; then
+        install -Dm644 "$ASSETS_SYS/opt/zen-browser-bin/distribution/policies.json" "/opt/zen-browser-bin/distribution/policies.json"
+      fi
+    fi
+  fi
+else
+  log_ok "[✓] ya Zen Browser está configurado como navegador por defecto del sistema y políticas aplicadas."
+fi
+
 # Componentes de Shell Clavis: clavis-fish-theme y my_zsh_prompt
 clone_or_update_fork "clavis-fish-theme" "https://github.com/robert-flo/PJ-NIRI-fo-clavis-fish-theme.git" "personal" "https://github.com/StatIndet/clavis-fish-theme.git" || true
 if [[ ! -x /usr/local/bin/clavis-fish-theme ]]; then
