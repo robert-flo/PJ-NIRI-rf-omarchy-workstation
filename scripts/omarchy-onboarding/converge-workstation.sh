@@ -773,7 +773,7 @@ fi
 
 if id omarchy-test >/dev/null 2>&1; then
   ot_home="$(getent passwd omarchy-test | cut -d: -f6)"
-  if [[ ! -f "$ot_home/.config/hypr/hyprland.conf" ]]; then
+  if [[ ! -f "$ot_home/.config/hypr/hyprland.lua" && ! -f "$ot_home/.config/hypr/hyprland.conf" ]]; then
     log_change "[CAMBIO] Sembrando entorno default Omarchy Hyprland en 'omarchy-test'..."
     CHANGES=$((CHANGES + 1))
     if [[ "$DRY_RUN" == false ]]; then
