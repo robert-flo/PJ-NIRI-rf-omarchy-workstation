@@ -462,6 +462,231 @@ EOF
   fi
 done
 
+# Provisionar herramientas de bóveda y disco seguro en .bashrc del administrador principal
+admin_home=$(getent passwd "$INVOKING_USER" 2>/dev/null | cut -d: -f6)
+if [[ -n "$admin_home" && -d "$admin_home" ]]; then
+  admin_bashrc="$admin_home/.bashrc"
+  if [[ -f "$admin_bashrc" ]] && ! grep -q "DISCO_LUKS_UUID" "$admin_bashrc"; then
+    log_change "[CAMBIO] Inyectando herramientas de Disco Seguro y Bóveda Cifrada en $admin_bashrc..."
+    CHANGES=$((CHANGES + 1))
+    if [[ "$DRY_RUN" == false ]]; then
+      cat << 'EOF' >> "$admin_bashrc"
+
+alias agy="$HOME/.local/bin/agy"
+
+# --- SELLO DE GESTION DE DISCO SEGURO LUKS + BTRFS ---
+export DISCO_LUKS_UUID="a9d0a6e3-a102-4688-84f4-33b38f7b5320"
+export DISCO_MAPPER="luks-$DISCO_LUKS_UUID"
+export DISCO_PUNTO_MONTAJE="$HOME/DiscoSeguro"
+
+abrir-disco() {
+    local dev_path="/dev/disk/by-uuid/$DISCO_LUKS_UUID"
+    if [ ! -b "$dev_path" ]; then
+        echo "Error: El disco seguro con UUID $DISCO_LUKS_UUID no está conectado por USB."
+        return 1
+    fi
+
+    local auto_mount
+    auto_mount=$(lsblk -ln -o MOUNTPOINTS "$dev_path" 2>/dev/null | grep -v '^$' || true)
+    if [ -z "$auto_mount" ] && [ -e "/dev/mapper/$DISCO_MAPPER" ]; then
+        auto_mount=$(lsblk -ln -o MOUNTPOINTS "/dev/mapper/$DISCO_MAPPER" 2>/dev/null | grep -v '^$' || true)
+    fi
+
+    if [ -n "$auto_mount" ]; then
+        mkdir -p "$DISCO_PUNTO_MONTAJE"
+        if ! mountpoint -q "$DISCO_PUNTO_MONTAJE"; then
+            sudo mount --bind "$auto_mount" "$DISCO_PUNTO_MONTAJE" 2>/dev/null || true
+        fi
+        echo "¡Listo! Disco seguro montado y disponible en: $DISCO_PUNTO_MONTAJE"
+        return 0
+    fi
+
+    if [ ! -e "/dev/mapper/$DISCO_MAPPER" ] && [ ! -e "/dev/mapper/disco_externo_seguro" ]; then
+        echo "Desbloqueando contenedor LUKS..."
+        if command -v udisksctl >/dev/null 2>&1; then
+            udisksctl unlock -b "$dev_path" || sudo cryptsetup open "$dev_path" disco_externo_seguro || return 1
+        else
+            sudo cryptsetup open "$dev_path" disco_externo_seguro || return 1
+        fi
+    fi
+
+    local active_mapper=""
+    if [ -e "/dev/mapper/$DISCO_MAPPER" ]; then
+        active_mapper="/dev/mapper/$DISCO_MAPPER"
+    elif [ -e "/dev/mapper/disco_externo_seguro" ]; then
+        active_mapper="/dev/mapper/disco_externo_seguro"
+    fi
+
+    mkdir -p "$DISCO_PUNTO_MONTAJE"
+    if mountpoint -q "$DISCO_PUNTO_MONTAJE"; then
+        echo "Aviso: Ya está montado en $DISCO_PUNTO_MONTAJE."
+    else
+        echo "Montando Btrfs con compresión zstd en $DISCO_PUNTO_MONTAJE..."
+        if command -v udisksctl >/dev/null 2>&1; then
+            udisksctl mount -b "$active_mapper" 2>/dev/null || sudo mount -o compress=zstd:1,noatime,space_cache=v2 "$active_mapper" "$DISCO_PUNTO_MONTAJE"
+        else
+            sudo mount -o compress=zstd:1,noatime,space_cache=v2 "$active_mapper" "$DISCO_PUNTO_MONTAJE"
+        fi
+        local current_mnt
+        current_mnt=$(lsblk -ln -o MOUNTPOINTS "$active_mapper" 2>/dev/null | grep -v '^$' | head -n 1 || true)
+        if [ -n "$current_mnt" ] && [ "$current_mnt" != "$DISCO_PUNTO_MONTAJE" ]; then
+            sudo mount --bind "$current_mnt" "$DISCO_PUNTO_MONTAJE" 2>/dev/null || true
+        fi
+        echo "¡Listo! Disco seguro disponible en: $DISCO_PUNTO_MONTAJE"
+    fi
+}
+
+cerrar-disco() {
+    local dev_path="/dev/disk/by-uuid/$DISCO_LUKS_UUID"
+    
+    # 1. Desmontar el bind mount en ~/DiscoSeguro si existe
+    if mountpoint -q "$DISCO_PUNTO_MONTAJE"; then
+        echo "Desmontando $DISCO_PUNTO_MONTAJE..."
+        sync
+        if ! sudo umount "$DISCO_PUNTO_MONTAJE" 2>/dev/null; then
+            if pgrep -x nautilus >/dev/null 2>&1; then
+                echo "Cerrando Nautilus para liberar $DISCO_PUNTO_MONTAJE..."
+                nautilus -q 2>/dev/null || true
+                sleep 1
+            fi
+            sudo umount "$DISCO_PUNTO_MONTAJE" 2>/dev/null || sudo umount -l "$DISCO_PUNTO_MONTAJE" 2>/dev/null || true
+        fi
+    fi
+
+    # 2. Localizar mapper activo
+    local mapper_dev=""
+    if [ -e "/dev/mapper/$DISCO_MAPPER" ]; then
+        mapper_dev="/dev/mapper/$DISCO_MAPPER"
+    elif [ -e "/dev/mapper/disco_externo_seguro" ]; then
+        mapper_dev="/dev/mapper/disco_externo_seguro"
+    fi
+
+    if [ -n "$mapper_dev" ]; then
+        # 3. Desmontar todos los puntos de montaje (ej. /run/media/rust/ALMACEN_BTRFS)
+        local mnt
+        for mnt in $(lsblk -ln -o MOUNTPOINTS "$mapper_dev" 2>/dev/null | grep -v '^$'); do
+            echo "Desmontando $mnt..."
+            sync
+            if ! udisksctl unmount -b "$mapper_dev" 2>/dev/null && ! sudo umount "$mnt" 2>/dev/null; then
+                echo "Aviso: $mnt está ocupado por otros procesos. Intentando liberar..."
+                if pgrep -x nautilus >/dev/null 2>&1; then
+                    echo "Cerrando Nautilus para liberar el almacenamiento..."
+                    nautilus -q 2>/dev/null || true
+                    sleep 1
+                fi
+                if command -v fuser >/dev/null 2>&1; then
+                    fuser -km -TERM "$mnt" 2>/dev/null || true
+                    sleep 1
+                fi
+                udisksctl unmount -b "$mapper_dev" 2>/dev/null || sudo umount "$mnt" 2>/dev/null || sudo umount -l "$mnt" 2>/dev/null || true
+            fi
+        done
+
+        # 4. Bloquear el contenedor LUKS
+        echo "Bloqueando contenedor cifrado LUKS..."
+        local closed=0
+        for _ in 1 2 3; do
+            if udisksctl lock -b "$dev_path" 2>/dev/null || sudo cryptsetup close "$mapper_dev" 2>/dev/null; then
+                closed=1
+                break
+            fi
+            sleep 1
+        done
+
+        if [ "$closed" -eq 1 ]; then
+            echo "Disco seguro cerrado con éxito. Puedes desconectarlo con seguridad."
+        else
+            sudo cryptsetup close "$mapper_dev" && echo "Disco seguro cerrado con éxito. Puedes desconectarlo."
+        fi
+    else
+        echo "El contenedor LUKS ya se encuentra cerrado."
+    fi
+}
+
+alias disco-on="abrir-disco"
+alias disco-off="cerrar-disco"
+# --- FIN SELLO DISCO SEGURO ---
+
+# === INICIO CONFIGURACION BOVEDA CIFRADA ===
+export VAULT_IMAGE="$HOME/.boveda_segura.img"
+export VAULT_MAPPER="boveda_privada"
+export VAULT_DIR="$HOME/Boveda"
+
+abrir-boveda() {
+    if [ ! -f "$VAULT_IMAGE" ]; then
+        echo "Error: No se encuentra el archivo de la bóveda en $VAULT_IMAGE"
+        return 1
+    fi
+
+    if [ -e "/dev/mapper/$VAULT_MAPPER" ]; then
+        echo "Aviso: El mapeador $VAULT_MAPPER ya está abierto."
+    else
+        echo "Abriendo contenedor LUKS..."
+        sudo cryptsetup open "$VAULT_IMAGE" "$VAULT_MAPPER" || return 1
+    fi
+
+    mkdir -p "$VAULT_DIR"
+    if mountpoint -q "$VAULT_DIR"; then
+        echo "Aviso: $VAULT_DIR ya está montado."
+    else
+        echo "Montando Btrfs en $VAULT_DIR..."
+        sudo mount -o compress=zstd:1 "/dev/mapper/$VAULT_MAPPER" "$VAULT_DIR" && \
+        echo "Bóveda montada y lista en: $VAULT_DIR"
+    fi
+}
+
+cerrar-boveda() {
+    if mountpoint -q "$VAULT_DIR"; then
+        echo "Desmontando $VAULT_DIR..."
+        sync
+        if ! sudo umount "$VAULT_DIR" 2>/dev/null; then
+            echo "Aviso: $VAULT_DIR está ocupado por procesos. Intentando liberar..."
+            if pgrep -x nautilus >/dev/null 2>&1; then
+                echo "Cerrando Nautilus para liberar la bóveda..."
+                nautilus -q 2>/dev/null || true
+                sleep 1
+            fi
+            if ! sudo umount "$VAULT_DIR" 2>/dev/null; then
+                if command -v fuser >/dev/null 2>&1; then
+                    echo "Liberando procesos bloqueantes en $VAULT_DIR..."
+                    fuser -km -TERM "$VAULT_DIR" 2>/dev/null || true
+                    sleep 1
+                fi
+                sudo umount "$VAULT_DIR" 2>/dev/null || sudo umount -l "$VAULT_DIR" || { echo "Error: Hay procesos usando $VAULT_DIR"; return 1; }
+            fi
+        fi
+    fi
+
+    if [ -e "/dev/mapper/$VAULT_MAPPER" ]; then
+        echo "Bloqueando contenedor LUKS..."
+        local closed=0
+        for _ in 1 2 3; do
+            if sudo cryptsetup close "$VAULT_MAPPER" 2>/dev/null; then
+                closed=1
+                break
+            fi
+            sleep 1
+        done
+
+        if [ "$closed" -eq 1 ]; then
+            echo "Bóveda cerrada y bloqueada con éxito."
+        else
+            sudo cryptsetup close "$VAULT_MAPPER" && echo "Bóveda cerrada y bloqueada con éxito."
+        fi
+    else
+        echo "La bóveda ya se encuentra cerrada."
+    fi
+}
+
+alias boveda-on="abrir-boveda"
+alias boveda-off="cerrar-boveda"
+# === FIN CONFIGURACION BOVEDA CIFRADA ===
+EOF
+      chown "$INVOKING_USER:$INVOKING_USER" "$admin_bashrc" 2>/dev/null || true
+    fi
+  fi
+fi
+
 # ==============================================================================
 # CAPA 02: Almacenamiento Compartido (/z, /zt, /z-drive), Wallpapers y synchub
 # ==============================================================================
