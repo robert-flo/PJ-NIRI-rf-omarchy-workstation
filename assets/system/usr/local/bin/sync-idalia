@@ -126,9 +126,16 @@ RCLONE_FLAGS=(
 
 [[ "$DRY_RUN" == true ]] && RCLONE_FLAGS+=(--dry-run)
 
+is_dir_empty() {
+    [[ -z "$(find "$1" -mindepth 1 -maxdepth 1 -print -quit 2>/dev/null)" ]]
+}
+
 if [[ "$ROLE" == "master" ]]; then
-    TOTAL_LOCAL_FILES=$(find "$LOCAL_DIR" -type f 2>/dev/null | wc -l)
-    if [[ $TOTAL_LOCAL_FILES -eq 0 && "$FORCE_DELETE" == false ]]; then
+    if is_dir_empty "$LOCAL_DIR" && [[ "$FORCE_DELETE" == false ]]; then
+        if [[ ! -t 1 ]]; then
+            log "[REPOSO] Carpeta local '$LOCAL_DIR' vacía. Esperando siembra inicial vía 'make sync'. Servicio en espera."
+            exit 0
+        fi
         log "SEGURIDAD: ALERTA: $LOCAL_DIR está vacío. Para evitar borrar la biblioteca en la nube, se detiene la sincronización MAESTRO."
         log "SEGURIDAD: Si esta es una máquina nueva/reinstalada, ejecuta primero la descarga: sync-idalia --replica"
         echo ""
@@ -139,7 +146,7 @@ if [[ "$ROLE" == "master" ]]; then
         echo "Si ejecutas modo MAESTRO en una carpeta vacía, se eliminaría la nube."
         echo ""
         echo "Para descargar tu biblioteca desde Google Drive primero, ejecuta:"
-        echo "  sync-idalia --replica"
+        echo "  sync-idalia --replica  (o ejecuta: make sync)"
         echo "=================================================================="
         notify "sync-idalia" "Escudo activado: carpeta local vacía" "critical"
         exit 2
@@ -156,8 +163,20 @@ if [[ "$ROLE" == "master" ]]; then
     fi
 else
     log "Modo HIJA / RÉPLICA: Descargando $CLOUD_DEST ➔ $LOCAL_DIR"
+    LOCAL_MOUNT=$(findmnt -n -o TARGET /run/media/*/ALMACEN_BTRFS 2>/dev/null | head -n 1 || echo "")
+    if [[ -n "$LOCAL_MOUNT" && -d "${LOCAL_MOUNT}/idalia" ]]; then
+        if ! is_dir_empty "${LOCAL_MOUNT}/idalia"; then
+            log "Detectado respaldo local en ${LOCAL_MOUNT}/idalia. Restaurando en local a velocidad SSD..."
+            rsync -avP "${LOCAL_MOUNT}/idalia/" "$LOCAL_DIR/" || true
+        fi
+    fi
+    log "Verificando y sincronizando delta desde Google Drive (${CLOUD_DEST})..."
     if rclone sync "$CLOUD_DEST" "$LOCAL_DIR" "${RCLONE_FLAGS[@]}"; then
         log "Sincronización RÉPLICA completada exitosamente."
+        if [[ -n "$LOCAL_MOUNT" && -d "${LOCAL_MOUNT}" ]]; then
+            mkdir -p "${LOCAL_MOUNT}/idalia"
+            rsync -a "$LOCAL_DIR/" "${LOCAL_MOUNT}/idalia/" 2>/dev/null || true
+        fi
         notify "sync-idalia" "Biblioteca multimedia actualizada desde la nube" "normal"
     else
         log "ERROR en sincronización RÉPLICA."

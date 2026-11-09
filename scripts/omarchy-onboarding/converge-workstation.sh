@@ -464,6 +464,7 @@ EOF
       rm -f "$acc_home/google-drive" "$acc_home/Google-Drive" "$acc_home/work" 2>/dev/null || true
 
       for zl_entry in "Cloud:/z-drive/cloud" \
+                      "Vaughan:/z-drive/vaughan" \
                       "Idalia:/z-drive/idalia" "Uploads-Gracie:/z-drive/uploads-gracie" "_boveda:/z-drive/boveda"; do
         zl_name="${zl_entry%:*}"
         zl_target="${zl_entry#*:}"
@@ -755,6 +756,7 @@ SHARED_DIRS=(
   "/zt:2770"
   "/z-drive:2770"
   "/z-drive/tries:2770"
+  "/z-drive/vaughan:2770"
   "/z-drive/idalia:2770"
   "/z-drive/uploads-gracie:2770"
   "/z-drive/boveda:2770"
@@ -811,26 +813,16 @@ for sh_conf in "$SYS_ASSETS"/etc/synchub/targets.d/*.conf; do
   [[ -f "$sh_conf" ]] || continue
   install_sys_file "/etc/synchub/targets.d/$(basename "$sh_conf")" "0644" "root:wheel"
 done
-for sh_bin in synchub sync-all sync-hub-bar sync-idalia sync-status sync-tries sync-tries-watcher sync-uploads-gracie upload-moved-gdrive upload-moved-shutdown-supervisor watch-moved; do
+for sh_bin in synchub sync-all sync-hub-bar sync-idalia sync-status sync-tries sync-vaughan sync-tries-watcher sync-uploads-gracie upload-moved-gdrive upload-moved-shutdown-supervisor watch-moved; do
   install_sys_file "/usr/local/bin/${sh_bin}" "0755" "root:root"
 done
 for sh_unit in synchub@.service synchub@.timer synchub-btrfs-attach.service rclone-gdrive-mount.service \
                sync-idalia.service sync-idalia.timer sync-tries.service sync-tries.timer sync-tries-watcher.service \
+               sync-vaughan.service sync-vaughan.timer \
                sync-uploads-gracie.service sync-uploads-gracie.timer; do
   install_sys_file "/etc/systemd/system/${sh_unit}" "0644" "root:root"
 done
 install_sys_file "/etc/udev/rules.d/99-almacen-btrfs.rules" "0644" "root:root"
-
-# Escudo de Primera Sincronización: Restaurar /z-drive/tries si está vacío y hay disco local montado
-if [[ -d "/z-drive/tries" && $(find /z-drive/tries -maxdepth 1 -mindepth 1 2>/dev/null | wc -l) -eq 0 ]]; then
-  if [[ -x /usr/local/bin/sync-tries ]] && findmnt -n -o TARGET /run/media/*/ALMACEN_BTRFS >/dev/null 2>&1; then
-    log_change "[CAMBIO] Restaurando proyectos iniciales en /z-drive/tries desde ALMACEN_BTRFS..."
-    CHANGES=$((CHANGES + 1))
-    if [[ "$DRY_RUN" == false ]]; then
-      /usr/local/bin/sync-tries --pull || true
-    fi
-  fi
-fi
 
 # ==============================================================================
 # CAPA 03: Paquetes [omarchy-personal], Toolchain Global, Fuentes y Android
@@ -1393,7 +1385,7 @@ if [[ "$DRY_RUN" == false ]]; then
   for unit_en in forkhub.timer niri-update.timer z-perms.service z-perms.timer z-drive-perms.timer \
                  android-sdk-perms.timer android-projects-perms.timer sandbox-btrfs-boot-reset.service \
                  rclone-gdrive-mount.service sync-tries-watcher.service \
-                 sync-tries.timer sync-idalia.timer sync-uploads-gracie.timer; do
+                 sync-tries.timer sync-vaughan.timer sync-idalia.timer sync-uploads-gracie.timer; do
     if ! systemctl is-enabled --quiet "$unit_en" 2>/dev/null; then
       log_change "[CAMBIO] Habilitando unidad systemd $unit_en..."
       CHANGES=$((CHANGES + 1))
@@ -1416,5 +1408,13 @@ if [[ "$DRY_RUN" == true ]]; then
 else
   echo "Cambios aplicados en capas 01-07: $CHANGES"
   log_ok "[✓] Convergencia integral de la estación de trabajo completada exitosamente."
+  echo ""
+  echo -e "\033[1;36m┌─────────────────────────────────────────────────────────────────────────┐\033[0m"
+  echo -e "\033[1;36m│\033[0m  \033[1;32m🎉 ESTACIÓN CONVERGIDA Y LISTA PARA USAR\033[0m                               \033[1;36m│\033[0m"
+  echo -e "\033[1;36m│\033[0m                                                                         \033[1;36m│\033[0m"
+  echo -e "\033[1;36m│\033[0m  • \033[1mAcceso Instantáneo Cloud:\033[0m ~/Cloud (FUSE activo, 0 bytes en disco)    \033[1;36m│\033[0m"
+  echo -e "\033[1;36m│\033[0m  • \033[1mRéplicas Offline Locales:\033[0m Para sembrar y sincronizar con seguridad:   \033[1;36m│\033[0m"
+  echo -e "\033[1;36m│\033[0m    ➔  \033[1;33mmake sync\033[0m                                                          \033[1;36m│\033[0m"
+  echo -e "\033[1;36m└─────────────────────────────────────────────────────────────────────────┘\033[0m"
 fi
 echo "=========================================================================="

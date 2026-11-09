@@ -70,7 +70,34 @@ elif [[ -f "${STATE_DIR}/sync-tries.log" ]]; then
     fi
 fi
 
-# 2. Datos de Idalia
+# 2. Datos de Vaughan
+VAUGHAN_DIR="/z-drive/vaughan"
+VAUGHAN_FILES=0
+VAUGHAN_SIZE="0"
+if [[ -d "$VAUGHAN_DIR" ]]; then
+    VAUGHAN_FILES=$(find "$VAUGHAN_DIR" -type f 2>/dev/null | wc -l)
+    VAUGHAN_SIZE=$(du -sh "$VAUGHAN_DIR" 2>/dev/null | cut -f1)
+fi
+
+VAUGHAN_STATE="🟢 Al día"
+if [[ $VAUGHAN_FILES -eq 0 ]]; then
+    VAUGHAN_STATE="💤 En Reposo"
+fi
+if pgrep -f "(bash .*/sync-vaughan( |$)|rclone .* gdrive:vaughan)" >/dev/null 2>&1; then
+    VAUGHAN_STATE="🔄 Syncing"
+elif [[ -f "${STATE_DIR}/sync-vaughan.log" ]]; then
+    last_event=$(tail -n 15 "${STATE_DIR}/sync-vaughan.log" 2>/dev/null | grep -E "SEGURIDAD: ALERTA|finalizada exitosamente|finalizada con|completada exitosamente|ERROR|REPOSO" | tail -n 1 || true)
+    if echo "$last_event" | grep -q "REPOSO"; then
+        VAUGHAN_STATE="💤 En Reposo"
+    elif echo "$last_event" | grep -q "SEGURIDAD: ALERTA"; then
+        VAUGHAN_STATE="🛡️ Alerta"
+    elif echo "$last_event" | grep -qiE "finalizada con [1-9]|ERROR"; then
+        VAUGHAN_STATE="🔴 Error"
+    fi
+fi
+VAUGHAN_TOPOLOGY="gdrive:vaughan + Btrfs"
+
+# 3. Datos de Idalia
 IDALIA_DIR="/z-drive/idalia"
 IDALIA_FILES=0
 IDALIA_SIZE="0"
@@ -80,11 +107,16 @@ if [[ -d "$IDALIA_DIR" ]]; then
 fi
 
 IDALIA_STATE="🟢 Al día"
+if [[ $IDALIA_FILES -eq 0 ]]; then
+    IDALIA_STATE="💤 En Reposo"
+fi
 if pgrep -f "(bash .*/sync-idalia( |$)|rclone sync .*/idalia)" >/dev/null 2>&1; then
     IDALIA_STATE="🔄 Syncing"
 elif [[ -f "${STATE_DIR}/sync-idalia.log" ]]; then
-    last_event=$(tail -n 15 "${STATE_DIR}/sync-idalia.log" 2>/dev/null | grep -E "SEGURIDAD: ALERTA|completada exitosamente|ERROR" | tail -n 1 || true)
-    if echo "$last_event" | grep -q "SEGURIDAD: ALERTA"; then
+    last_event=$(tail -n 15 "${STATE_DIR}/sync-idalia.log" 2>/dev/null | grep -E "SEGURIDAD: ALERTA|completada exitosamente|ERROR|REPOSO" | tail -n 1 || true)
+    if echo "$last_event" | grep -q "REPOSO"; then
+        IDALIA_STATE="💤 En Reposo"
+    elif echo "$last_event" | grep -q "SEGURIDAD: ALERTA"; then
         IDALIA_STATE="🛡️ Alerta"
     elif echo "$last_event" | grep -qiE "ERROR"; then
         IDALIA_STATE="🔴 Error"
@@ -92,7 +124,7 @@ elif [[ -f "${STATE_DIR}/sync-idalia.log" ]]; then
 fi
 IDALIA_TOPOLOGY="Google Drive [ROL: ${IDALIA_ROLE^^}]"
 
-# 3. Datos de Uploads-Gracie
+# 4. Datos de Uploads-Gracie
 UPLOADS_DIR="/z-drive/uploads-gracie"
 UPLOADS_FILES=0
 UPLOADS_SIZE="0"
@@ -181,19 +213,21 @@ print("  ├" + "─" * (w1 + 2) + "┼" + "─" * (w2 + 2) + "┼" + "─" * (w
 rows = [
     (sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]),
     (sys.argv[5], sys.argv[6], sys.argv[7], sys.argv[8]),
-    (sys.argv[9], sys.argv[10], sys.argv[11], sys.argv[12])
+    (sys.argv[9], sys.argv[10], sys.argv[11], sys.argv[12]),
+    (sys.argv[13], sys.argv[14], sys.argv[15], sys.argv[16])
 ]
 
 for name, state, stats, topo in rows:
     print("  │ " + pad(name, w1) + " │ " + pad(state, w2) + " │ " + pad(stats, w3) + " │ " + pad(topo, w4) + " │")
 print("  └" + "─" * (w1 + 2) + "┴" + "─" * (w2 + 2) + "┴" + "─" * (w3 + 2) + "┴" + "─" * (w4 + 2) + "┘")
 ' "Tries (Código)" "$TRIES_STATE" "$TRIES_FILES ($TRIES_SIZE)" "gdrive:gracie + Btrfs" \
+  "Vaughan (Recursos)" "$VAUGHAN_STATE" "$VAUGHAN_FILES ($VAUGHAN_SIZE)" "$VAUGHAN_TOPOLOGY" \
   "Idalia (Multimedia)" "$IDALIA_STATE" "$IDALIA_FILES ($IDALIA_SIZE)" "$IDALIA_TOPOLOGY" \
   "Uploads-Gracie" "$UPLOADS_STATE" "$UPLOADS_FILES ($UPLOADS_SIZE)" "$UPLOADS_TOPOLOGY"
 
 echo ""
 echo -e "${BOLD}• Servicios Automáticos del Sistema (systemd):${RESET}"
-SERVICES=("sync-tries.timer" "sync-idalia.timer" "sync-uploads-gracie.timer" "z-drive-perms.service" "rclone-gdrive-mount.service")
+SERVICES=("sync-tries.timer" "sync-vaughan.timer" "sync-idalia.timer" "sync-uploads-gracie.timer" "z-drive-perms.service" "rclone-gdrive-mount.service")
 for s in "${SERVICES[@]}"; do
     if systemctl is-active --quiet "$s" 2>/dev/null; then
         echo -e "  - ${s}: ${GREEN}[✓ ACTIVO]${RESET}"
@@ -206,7 +240,7 @@ done
 
 echo ""
 echo -e "${BOLD}• Últimos Registros (${STATE_DIR}):${RESET}"
-for s in "sync-tries" "sync-idalia" "sync-uploads-gracie"; do
+for s in "sync-tries" "sync-vaughan" "sync-idalia" "sync-uploads-gracie"; do
     log_file="${STATE_DIR}/${s}.log"
     if [[ -f "$log_file" ]]; then
         last_line=$(tail -n 1 "$log_file" 2>/dev/null || echo "Sin registros")
