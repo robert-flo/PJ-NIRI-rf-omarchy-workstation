@@ -470,6 +470,25 @@ else
   log_ok "[✓] ya el repositorio compartido de dotfiles /z/rf-dotfiles está sincronizado."
 fi
 
+# Repositorio canónico unificado de wallpapers (SSoT de fondos compartidos y videos)
+WALLPAPER_COLLECTION_DIR="/z/wallpaper-collection"
+if [[ ! -d "$WALLPAPER_COLLECTION_DIR/.git" ]]; then
+  log_change "[CAMBIO] Clonando repositorio canónico de wallpapers en $WALLPAPER_COLLECTION_DIR..."
+  CHANGES=$((CHANGES + 1))
+  if [[ "$DRY_RUN" == false ]]; then
+    git clone https://github.com/robert-flo/wallpaper-collection.git "$WALLPAPER_COLLECTION_DIR"
+    chown -R "$INVOKING_USER:wheel" "$WALLPAPER_COLLECTION_DIR"
+    chmod -R g+rwX "$WALLPAPER_COLLECTION_DIR"
+    chmod g+s "$WALLPAPER_COLLECTION_DIR"
+    git -C "$WALLPAPER_COLLECTION_DIR" config core.fileMode false
+  fi
+else
+  if [[ "$DRY_RUN" == false ]]; then
+    sudo -u "$INVOKING_USER" git -C "$WALLPAPER_COLLECTION_DIR" pull --ff-only origin master >/dev/null 2>&1 || true
+  fi
+  log_ok "[✓] ya el repositorio compartido de wallpapers /z/wallpaper-collection está sincronizado."
+fi
+
 # Watchers de permisos y unidades systemd
 for bin_f in fix_shared_dir_perms.sh z-perms_watcher.sh z-drive-perms_watcher.sh android-sdk-perms_watcher.sh android-projects-perms_watcher.sh; do
   install_sys_file "/usr/local/bin/${bin_f}" "0755" "root:root"
