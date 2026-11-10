@@ -1,1 +1,7 @@
-{}
+{
+  "cssTheme": "Violet",
+  "theme": "moonstone",
+  "enabledCssSnippets": [
+    "violet-native-glass"
+  ]
+}
