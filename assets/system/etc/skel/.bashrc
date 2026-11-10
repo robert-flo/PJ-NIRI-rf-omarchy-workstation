@@ -2,7 +2,7 @@
 [[ -r /usr/share/omarchy/default/bash/env-bootstrap ]] && source /usr/share/omarchy/default/bash/env-bootstrap
 
 # --- ANDROID & JAVA ENVIRONMENT ---
-export ANDROID_HOME="$HOME/Android/Sdk"
+export ANDROID_HOME="/opt/android-sdk"
 export ANDROID_USER_HOME="$HOME/.android"
 export ANDROID_PROJECTS_DIR="/z/android-projects"
 export PATH="$PATH:$ANDROID_HOME/emulator:$ANDROID_HOME/platform-tools:$ANDROID_HOME/cmdline-tools/latest/bin:$HOME/.local/bin"
