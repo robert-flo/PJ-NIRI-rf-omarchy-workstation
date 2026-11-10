@@ -640,6 +640,22 @@ install_sys_file "/etc/fish/conf.d/android.fish" "0644" "root:root"
 install_sys_file "/usr/local/bin/fork-docs" "0755" "root:root"
 install_sys_file "/usr/local/bin/google-chrome" "0755" "root:root"
 
+# Aprovisionamiento inicial del SDK Android compartido (/opt/android-sdk)
+if [[ -x /opt/android-sdk/cmdline-tools/latest/bin/sdkmanager ]]; then
+  if [[ ! -d /opt/android-sdk/platforms/android-35 || ! -d /opt/android-sdk/build-tools/35.0.0 ]]; then
+    log_change "[CAMBIO] Aprovisionando componentes base de Android SDK (API 35, Build-Tools 35.0.0, Platform-Tools)..."
+    CHANGES=$((CHANGES + 1))
+    if [[ "$DRY_RUN" == false ]]; then
+      yes | /opt/android-sdk/cmdline-tools/latest/bin/sdkmanager --sdk_root=/opt/android-sdk \
+        "platform-tools" "platforms;android-35" "build-tools;35.0.0" || true
+      chmod -R g+rwX /opt/android-sdk 2>/dev/null || true
+      chgrp -R wheel /opt/android-sdk 2>/dev/null || true
+    fi
+  else
+    log_ok "[✓] ya los componentes base de Android SDK (API 35 y Build-Tools 35.0.0) están aprovisionados."
+  fi
+fi
+
 # ==============================================================================
 # CAPA 04: Entornos de Escritorio (niri-edge, key-cli, Clavis, Nyxuri)
 # ==============================================================================
