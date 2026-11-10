@@ -562,7 +562,7 @@ else
     vulkan-headers ttf-material-symbols-variable matugen awww brightnessctl ddcutil
     imagemagick xdg-terminal-exec wl-clipboard slurp grim gpu-screen-recorder ffmpeg mpv
     gst-plugins-base gst-plugins-good gst-plugins-bad gst-plugins-ugly gst-libav gst-plugin-pipewire
-    vlc vlc-plugins-all
+    vlc vlc-plugins-all cursor-bin visual-studio-code-bin
     libpulse hyprpicker flatpak waybar fuzzel mako swaybg swaylock xwayland-satellite
     xdg-desktop-portal-gnome polkit-gnome playerctl cliphist libqalculate wlsunset
     gtk-layer-shell cava ttf-ibm-plex ttf-ibmplex-mono-nerd chezmoi jq
@@ -570,6 +570,7 @@ else
   AUR_PKGS=(
     qt6-m3shapes-git libcava ttf-lxgw-wenkai-screen mpvpaper-git dotbare
     android-studio-canary google-chrome google-cloud-cli firebase-tools-bin
+    android-sdk-cmdline-tools-latest antigravity antigravity-ide visual-studio-code-insiders-bin
   )
 fi
 
@@ -611,6 +612,7 @@ fi
 AUR_PKGS=(
   qt6-m3shapes-git libcava ttf-lxgw-wenkai-screen mpvpaper-git dotbare
   android-studio-canary google-chrome google-cloud-cli firebase-tools-bin
+  android-sdk-cmdline-tools-latest antigravity antigravity-ide visual-studio-code-insiders-bin
 )
 MISSING_AUR=()
 for apkg in "${AUR_PKGS[@]}"; do
