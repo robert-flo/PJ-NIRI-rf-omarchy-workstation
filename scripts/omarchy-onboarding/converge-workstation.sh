@@ -585,9 +585,10 @@ else
     libpulse hyprpicker flatpak waybar fuzzel mako swaybg swaylock xwayland-satellite
     xdg-desktop-portal-gnome polkit-gnome playerctl cliphist libqalculate wlsunset
     gtk-layer-shell cava ttf-ibm-plex ttf-ibmplex-mono-nerd chezmoi jq
+    fcitx5 fcitx5-configtool fcitx5-gtk fcitx5-qt fcitx5-rime mangowm obsidian
   )
   AUR_PKGS=(
-    qt6-m3shapes-git libcava ttf-lxgw-wenkai-screen mpvpaper-git dotbare
+    qt6-m3shapes-git libcava ttf-lxgw-wenkai-screen mpvpaper-git dotbare rime-ice-git
     android-studio-canary google-chrome google-cloud-cli firebase-tools-bin
     android-sdk-cmdline-tools-latest antigravity antigravity-ide visual-studio-code-insiders-bin
   )
@@ -1032,7 +1033,8 @@ for nyx_u in nyxuri nyxuri-test; do
           mkdir -p "$HOME/.config/noctalia"
           ln -sfn /z/wallpaper-collection "$HOME/.config/noctalia/wallpapers"
           for unit in niri noctalia kitty fastfetch fish starship theme wallpapers xdg-desktop-portal zed \
-                      shell.bar shell.desktopcards shell.dock shell.keystone shell.launcher shell.lock \
+                      fcitx5-rime greeter mango obsidian-theme \
+                      shell.bar shell.desktopcards shell.dock shell.launcher shell.lock \
                       shell.notifications shell.regionselector shell.session shell.settings shell.sidebars shell.wallpaper; do
             /usr/local/bin/nyxuri on "$unit" || true
           done

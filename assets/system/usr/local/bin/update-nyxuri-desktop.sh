@@ -41,7 +41,7 @@ fi
 
 # 2. Desplegar sincronización de unidades en usuarios de Nyxuri
 echo ">> [2/3] Aplicando sincronización en usuarios de Nyxuri..."
-UNITS="niri noctalia kitty fastfetch fish starship theme wallpapers xdg-desktop-portal zed shell.bar shell.desktopcards shell.dock shell.keystone shell.launcher shell.lock shell.notifications shell.regionselector shell.session shell.settings shell.sidebars shell.wallpaper"
+UNITS="niri noctalia kitty fastfetch fish starship theme wallpapers xdg-desktop-portal zed fcitx5-rime greeter mango obsidian-theme shell.bar shell.desktopcards shell.dock shell.launcher shell.lock shell.notifications shell.regionselector shell.session shell.settings shell.sidebars shell.wallpaper"
 for u in nyxuri nyxuri-test; do
     if id "$u" &>/dev/null; then
         echo "   -> Sincronizando unidades para $u..."
