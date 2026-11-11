@@ -987,21 +987,76 @@ for clavis_u in niri niri-test; do
       log_ok "[✓] ya la paleta Matugen (colors.json) está generada para '$clavis_u'."
     fi
 
-    # Generación dinámica de outputs.kdl si no existe (evita avisos en niri validate)
-    if [[ ! -f "$u_home/.config/niri/outputs.kdl" ]]; then
-      active_conn="$(for p in /sys/class/drm/card*-*/status; do if [[ "$(cat "$p" 2>/dev/null)" == "connected" ]]; then basename "$(dirname "$p")" | sed 's/^card[0-9]*-//'; break; fi; done)"
-      if [[ -n "$active_conn" ]]; then
-        log_change "[CAMBIO] Generando outputs.kdl ($active_conn) para '$clavis_u'..."
+    # Generación y migración de outputs de pantalla para Clavis (clavis/outputs.kdl)
+    # Clavis solo permite editar pantallas definidas en clavis/outputs.kdl.
+    # outputs.kdl se reserva para anulaciones manuales estáticas sin gestión gráfica.
+    mkdir -p "$u_home/.config/niri/clavis"
+    active_conn="$(for p in /sys/class/drm/card*-*/status; do if [[ "$(cat "$p" 2>/dev/null)" == "connected" ]]; then basename "$(dirname "$p")" | sed 's/^card[0-9]*-//'; break; fi; done)"
+
+    # Migrar bloque heredado si existe en outputs.kdl y clavis/outputs.kdl carece de él
+    if [[ -f "$u_home/.config/niri/outputs.kdl" ]] && grep -q 'output "' "$u_home/.config/niri/outputs.kdl"; then
+      if [[ ! -f "$u_home/.config/niri/clavis/outputs.kdl" ]] || ! grep -q 'output "' "$u_home/.config/niri/clavis/outputs.kdl"; then
+        log_change "[CAMBIO] Migrando configuración de salida de outputs.kdl a clavis/outputs.kdl para '$clavis_u'..."
         CHANGES=$((CHANGES + 1))
         if [[ "$DRY_RUN" == false ]]; then
-          cat << EOF > "$u_home/.config/niri/outputs.kdl"
+          printf '// Managed by Clavis.\n' > "$u_home/.config/niri/clavis/outputs.kdl"
+          grep -A 10 'output "' "$u_home/.config/niri/outputs.kdl" >> "$u_home/.config/niri/clavis/outputs.kdl"
+          cat << 'EOF' > "$u_home/.config/niri/outputs.kdl"
+// Machine-specific manual outputs override (opcional).
+// Las pantallas gestionadas por la interfaz de Clavis residen en clavis/outputs.kdl.
+EOF
+          chown "$clavis_u:$clavis_u" "$u_home/.config/niri/clavis/outputs.kdl" "$u_home/.config/niri/outputs.kdl"
+        fi
+      else
+        log_change "[CAMBIO] Limpiando bloques duplicados en outputs.kdl para habilitar gestión de Clavis en '$clavis_u'..."
+        CHANGES=$((CHANGES + 1))
+        if [[ "$DRY_RUN" == false ]]; then
+          cat << 'EOF' > "$u_home/.config/niri/outputs.kdl"
+// Machine-specific manual outputs override (opcional).
+// Las pantallas gestionadas por la interfaz de Clavis residen en clavis/outputs.kdl.
+EOF
+          chown "$clavis_u:$clavis_u" "$u_home/.config/niri/outputs.kdl"
+        fi
+      fi
+    fi
+
+    # Inicialización de salida por defecto en clavis/outputs.kdl si no existe
+    if [[ ! -f "$u_home/.config/niri/clavis/outputs.kdl" ]] || ! grep -q 'output "' "$u_home/.config/niri/clavis/outputs.kdl"; then
+      if [[ -n "$active_conn" ]]; then
+        log_change "[CAMBIO] Generando clavis/outputs.kdl ($active_conn) para '$clavis_u'..."
+        CHANGES=$((CHANGES + 1))
+        if [[ "$DRY_RUN" == false ]]; then
+          cat << EOF > "$u_home/.config/niri/clavis/outputs.kdl"
+// Managed by Clavis.
 output "$active_conn" {
     mode "1920x1080@60.000"
     scale 1.0
 }
 EOF
-          chown "$clavis_u:$clavis_u" "$u_home/.config/niri/outputs.kdl"
+          chown "$clavis_u:$clavis_u" "$u_home/.config/niri/clavis/outputs.kdl"
         fi
+      fi
+    else
+      log_ok "[✓] ya clavis/outputs.kdl cuenta con configuración de salida para '$clavis_u'."
+    fi
+
+    if [[ ! -f "$u_home/.config/niri/outputs.kdl" ]]; then
+      if [[ "$DRY_RUN" == false ]]; then
+        cat << 'EOF' > "$u_home/.config/niri/outputs.kdl"
+// Machine-specific manual outputs override (opcional).
+// Las pantallas gestionadas por la interfaz de Clavis residen en clavis/outputs.kdl.
+EOF
+        chown "$clavis_u:$clavis_u" "$u_home/.config/niri/outputs.kdl"
+      fi
+    fi
+
+    # Garantizar que config.kdl incluya clavis/outputs.kdl para que Clavis pueda gestionarlo
+    if [[ -f "$u_home/.config/niri/config.kdl" ]] && ! grep -q 'clavis/outputs.kdl' "$u_home/.config/niri/config.kdl"; then
+      log_change "[CAMBIO] Añadiendo include 'clavis/outputs.kdl' a config.kdl para '$clavis_u'..."
+      CHANGES=$((CHANGES + 1))
+      if [[ "$DRY_RUN" == false ]]; then
+        printf '\ninclude "clavis/outputs.kdl";\n' >> "$u_home/.config/niri/config.kdl"
+        chown "$clavis_u:$clavis_u" "$u_home/.config/niri/config.kdl"
       fi
     fi
 
