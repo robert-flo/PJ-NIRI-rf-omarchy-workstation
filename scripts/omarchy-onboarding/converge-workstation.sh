@@ -216,7 +216,7 @@ if ! getent group adbusers >/dev/null 2>&1; then
   run groupadd -f adbusers
 fi
 
-WORKSTATION_USERS=("niri" "niri-test" "nyxuri" "nyxuri-test" "nyxuri-legacy" "omarchy-test")
+WORKSTATION_USERS=("niri" "niri-classic" "niri-test" "nyxuri" "nyxuri-test" "nyxuri-legacy" "omarchy-test")
 REQ_GROUPS="wheel,audio,input,video,kvm,storage,render,adbusers"
 
 # Selección interactiva y gestión de contraseñas de usuarios de la estación
@@ -936,7 +936,7 @@ else
 fi
 
 # 4.6 Despliegue Unificado de Dotfiles vía Chezmoi (Single Source of Truth)
-DOTFILES_USERS=("$INVOKING_USER" niri niri-test omarchy-test nyxuri nyxuri-test)
+DOTFILES_USERS=("$INVOKING_USER" niri niri-classic niri-test omarchy-test nyxuri nyxuri-test)
 for du in "${DOTFILES_USERS[@]}"; do
   if id "$du" >/dev/null 2>&1; then
     du_home="$(getent passwd "$du" | cut -d: -f6)"
