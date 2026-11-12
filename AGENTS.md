@@ -29,6 +29,11 @@ Este repositorio (`PJ-NIRI-rf-omarchy-workstation`) persigue una visión fundame
 5. **Decisiones de Arquitectura Formalizadas (ADR):**
    - Las decisiones arquitectónicas de fondo están formalizadas en los registros de decisiones (ADR). Consultá [[docs/adr/0001-una-sola-puerta-y-meta-workspace|ADR 0001 — Una Sola Puerta y Meta-Workspace]] para el modelo de empaquetado, meta-workspace `/z/pj-omarchy` y convergencia del onboarding.
 
+6. **Única Fuente Canónica de Atajos de Teclado (SSoT):**
+   - El documento oficial y canónico de referencia para todos los atajos de teclado y keybindings de la estación de trabajo (Niri, Clavis, Quickshell suite y módulos auxiliares) reside **exclusivamente** en [[07.1 - Mapa Completo de Atajos de Teclado (Niri, Clavis, Nyxuri)]].
+   - **Regla de oro:** Cualquier adición, ajuste o eliminación de keybindings en la configuración activa (`config.kdl`, Chezmoi en `/z/rf-dotfiles`, llamadas IPC de Clavis, etc.) **DEBE reflejarse de inmediato en la nota 07.1**.
+   - No se permiten atajos huérfanos sin documentar ni copias duplicadas fuera del vault. La nota `07.1` debe mantenerse siempre 100% confiable y al día con lo que realmente opera en el escritorio.
+
 ---
 
 ## Git
