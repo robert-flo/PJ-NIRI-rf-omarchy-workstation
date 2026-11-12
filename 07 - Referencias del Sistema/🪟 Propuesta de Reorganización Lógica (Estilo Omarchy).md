@@ -68,6 +68,8 @@ flowchart TD
 | **`Super + F`** | **Maximizar Columna** | Expande la columna actual en pantalla. |
 | **`Super + C`** | **Centrar Columna** | Centra la columna enfocada en el monitor. |
 | **`Super + V`** | **Alternar Flotante** | Pasa la ventana de mosaico a capa flotante. |
+| **`Super + S`** | **Ventana Sticky (Always-on-top)** | Flotante persistente que sigue automáticamente entre workspaces (`clavis-sticky-toggle.sh`). |
+| **`Super + M`** | **Maximizar a Bordes Físicos (Workspace)** | Conmuta todas las ventanas del workspace a 0 gaps (`clavis-toggle-maximize-all.sh`). |
 | **`Super + G`** *(o `W`)* | **Alternar Pestañas (Tabbed)** | Agrupa ventanas en columnas con pestañas. |
 | **`Super + ,` / `.`** | **Consumir / Expulsar Ventana** | Añadir o extraer ventana de una columna. |
 | **`Super + -` / `=`** | **Ajustar Ancho de Columna (±10%)** | Ajuste fino del tamaño horizontal. |
@@ -87,6 +89,7 @@ flowchart TD
 | **`Super + Shift + O`** | **Base de Conocimiento (Obsidian)** | **O**bsidian / Bóveda de notas de trabajo. |
 | **`Super + Shift + S`** | **Captura de Pantalla Interactiva** | **S**creenshot seleccionando área con el cursor. |
 | **`Super + Shift + F`** | **Pantalla Completa (Fullscreen)** | **F**ullscreen total sin marcos ni barras (Niri upstream). |
+| **`Super + Shift + M`** | **Maximizar Ventana a Bordes Físicos** | Expande la ventana actual a los bordes exteriores sin gaps (`maximize-window-to-edges`). |
 | **`Super + Shift + Space`** | **Búsqueda Web en Spotlight** | Modo web directo en el buscador. |
 | **`Super + Shift + Flechas / HJKL`**| **Foco a Monitor Adyacente** | Navegación multimonitor izquierda / derecha / arriba / abajo. |
 
