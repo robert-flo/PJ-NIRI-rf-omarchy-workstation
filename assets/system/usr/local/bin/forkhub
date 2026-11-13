@@ -219,6 +219,9 @@ cmd_upstream() {
             if [[ "$behind" -eq 0 ]]; then
                 status_badge="${GREEN}🟢 Al día (+${ahead}/-0)${RESET}"
                 up_to_date=$((up_to_date + 1))
+            elif [[ "$sync_strategy" == "manual" || "$sync_strategy" == "frozen" || "$sync_strategy" == "none" ]]; then
+                status_badge="${CYAN}❄️ Congelado (-${behind}/+${ahead})${RESET}"
+                behind_count=$((behind_count + 1))
             else
                 status_badge="${YELLOW}🔄 Detrás (-${behind}/+${ahead})${RESET}"
                 behind_count=$((behind_count + 1))
@@ -305,6 +308,12 @@ cmd_sync_upstream() {
         behind=$(python3 -c 'import sys,json; d=json.load(sys.stdin); print(d.get("behind_by",0))' <<< "$cmp_json" 2>/dev/null || echo 0)
         if [[ "$behind" -eq 0 ]]; then
             log "[✓] $name (${fork_repo}:${branch}) ya está al día contra ${upstream_repo}:${up_br}."
+            skipped=$((skipped + 1))
+            continue
+        fi
+
+        if [[ "$sync_strategy" == "manual" || "$sync_strategy" == "frozen" || "$sync_strategy" == "none" ]]; then
+            log "[❄️ CONGELADO] $name tiene $behind commits pendientes en upstream pero su estrategia es $sync_strategy. Omitiendo sincronización automática."
             skipped=$((skipped + 1))
             continue
         fi

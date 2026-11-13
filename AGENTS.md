@@ -57,7 +57,7 @@ Este repositorio (`PJ-NIRI-rf-omarchy-workstation`) persigue una visión fundame
 - Usuarios del sistema (agnóstico del nombre de usuario administrador principal de cada máquina: ej. `rollo`, `omarchy`, etc.):
   - `<admin>` (`rollo`, `omarchy`, etc.): Administración del sistema + entorno Omarchy/Hyprland base (nunca asumir un nombre fijo como `omarchy`; cualquier máquina con cualquier nombre de usuario puede tomar rol PADRE o HIJA).
   - `niri`: Producción de escritorio Wayland bajo Clavis Shell (Quickshell).
-  - `niri-classic`: Entorno de escritorio bajo Clavis Shell Classic (rama `personal-classic` con banner de perfil y sección device settings restaurados, aislado en `/opt/clavis-classic`).
+  - `niri-classic`: Entorno de escritorio bajo Clavis Shell Classic (rama `personal-classic` congelada con barra clásica de pastillas/pills, banner de perfil y sección device settings restaurados, aislado en `/opt/clavis-classic`; actualizaciones selectivas solo vía cherry-pick manual).
   - `niri-test` (referenciado también como `sura`): Entorno de pruebas visuales y testbench para Clavis (desechable, se recrea desde dotfiles).
   - `nyxuri`: Producción de escritorio Wayland bajo Noctalia Shell / Nyxuri Engine (Edge T3 M4).
   - `nyxuri-test`: Entorno de pruebas y testbench para Nyxuri Edge (desechable).
