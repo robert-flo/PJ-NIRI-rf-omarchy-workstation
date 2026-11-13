@@ -785,6 +785,72 @@ if [[ "$SKIP_BUILDS" == false ]]; then
   else
     log_ok "[✓] ya Clavis Shell (/etc/xdg/quickshell/clavis) está instalado."
   fi
+
+  # 4.3.1 Clavis Shell Classic (robert-flo/quickshell rama personal-classic en /opt/clavis-classic)
+  if [[ -d "$BUILD_DIR/quickshell" ]]; then
+    if [[ ! -d "$BUILD_DIR/quickshell-classic" ]]; then
+      log_change "[CAMBIO] Creando worktree quickshell-classic (personal-classic) en $BUILD_DIR/quickshell-classic..."
+      CHANGES=$((CHANGES + 1))
+      if [[ "$DRY_RUN" == false ]]; then
+        sudo -u "$INVOKING_USER" git -C "$BUILD_DIR/quickshell" worktree add "$BUILD_DIR/quickshell-classic" personal-classic 2>/dev/null || \
+        sudo -u "$INVOKING_USER" git -C "$BUILD_DIR/quickshell" worktree add -B personal-classic "$BUILD_DIR/quickshell-classic" origin/personal-classic
+      fi
+    fi
+
+    if [[ ! -d /opt/clavis-classic/lib/qt6/qml ]]; then
+      log_change "[CAMBIO] Compilando e instalando Clavis Shell Classic en /opt/clavis-classic..."
+      CHANGES=$((CHANGES + 1))
+      if [[ "$DRY_RUN" == false && -d "$BUILD_DIR/quickshell-classic" ]]; then
+        (
+          cd "$BUILD_DIR/quickshell-classic"
+          sudo -u "$INVOKING_USER" /usr/bin/python3 scripts/release.py bundle-resources --cache /tmp/clavis-cache || true
+          sudo -u "$INVOKING_USER" cmake -S . -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_TESTING=OFF \
+            -DCMAKE_INSTALL_PREFIX=/opt/clavis-classic \
+            -DCMAKE_INSTALL_LIBDIR=lib \
+            -DCLAVIS_CONFIG_INSTALL_DIR=/opt/clavis-classic/share/quickshell/clavis \
+            -DPython3_EXECUTABLE=/usr/bin/python3
+          sudo -u "$INVOKING_USER" cmake --build build -j$(nproc)
+          cmake --install build
+        )
+      fi
+    else
+      log_ok "[✓] ya Clavis Shell Classic (/opt/clavis-classic) está instalado."
+    fi
+
+    # 4.3.2 Clavis Shell Upstream (StatIndet/quickshell rama main puro en /opt/clavis-upstream)
+    if [[ ! -d "$BUILD_DIR/quickshell-upstream" ]]; then
+      log_change "[CAMBIO] Creando worktree quickshell-upstream (upstream/main) en $BUILD_DIR/quickshell-upstream..."
+      CHANGES=$((CHANGES + 1))
+      if [[ "$DRY_RUN" == false ]]; then
+        sudo -u "$INVOKING_USER" git -C "$BUILD_DIR/quickshell" fetch upstream main 2>/dev/null || true
+        sudo -u "$INVOKING_USER" git -C "$BUILD_DIR/quickshell" worktree add "$BUILD_DIR/quickshell-upstream" upstream/main 2>/dev/null || \
+        sudo -u "$INVOKING_USER" git -C "$BUILD_DIR/quickshell" worktree add -B upstream-main "$BUILD_DIR/quickshell-upstream" upstream/main
+      fi
+    fi
+
+    if [[ ! -d /opt/clavis-upstream/lib/qt6/qml ]]; then
+      log_change "[CAMBIO] Compilando e instalando Clavis Shell Upstream en /opt/clavis-upstream..."
+      CHANGES=$((CHANGES + 1))
+      if [[ "$DRY_RUN" == false && -d "$BUILD_DIR/quickshell-upstream" ]]; then
+        (
+          cd "$BUILD_DIR/quickshell-upstream"
+          sudo -u "$INVOKING_USER" cmake -S . -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_TESTING=OFF \
+            -DCMAKE_INSTALL_PREFIX=/opt/clavis-upstream \
+            -DCMAKE_INSTALL_LIBDIR=lib \
+            -DCLAVIS_CONFIG_INSTALL_DIR=/opt/clavis-upstream/etc/xdg/quickshell/clavis \
+            -DPython3_EXECUTABLE=/usr/bin/python3
+          sudo -u "$INVOKING_USER" cmake --build build -j$(nproc)
+          cmake --install build
+        )
+      fi
+    else
+      log_ok "[✓] ya Clavis Shell Upstream (/opt/clavis-upstream) está instalado."
+    fi
+  fi
 fi
 
 # 4.4 Tema MacTahoe (iconos, cursores y temas GTK)
