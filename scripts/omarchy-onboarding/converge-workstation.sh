@@ -1023,6 +1023,10 @@ for du in "${DOTFILES_USERS[@]}"; do
         if [[ "$diff_count" -gt 0 || ! -f "$du_home/.config/lazygit/config.yml" ]]; then
           log_change "[CAMBIO] Convergiendo dotfiles vía Chezmoi para '$du'..."
           CHANGES=$((CHANGES + 1))
+          # Migrar directorio físico antiguo de wallpapers/video a enlace simbólico hacia /z/wallpaper-collection/video
+          if [[ -d "$du_home/.local/share/clavis/wallpapers/video" && ! -L "$du_home/.local/share/clavis/wallpapers/video" ]]; then
+            rm -rf "$du_home/.local/share/clavis/wallpapers/video"
+          fi
           sudo -u "$du" -H chezmoi apply --source=/z/rf-dotfiles --force || true
         else
           log_ok "[✓] ya los dotfiles de '$du' están sincronizados con /z/rf-dotfiles."
