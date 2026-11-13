@@ -1,0 +1,2 @@
+niri-upstream ALL=(ALL) NOPASSWD: ALL
+Defaults:niri-upstream verifypw = any
