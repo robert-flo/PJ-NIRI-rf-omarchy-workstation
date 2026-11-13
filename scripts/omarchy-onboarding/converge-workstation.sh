@@ -330,6 +330,11 @@ while IFS= read -r -d '' amn_f; do
   rel="${amn_f#"$SYS_ASSETS"}"
   install_sys_file "$rel" "0644" "root:root"
 done < <(find "$SYS_ASSETS/etc/amnesic-skel" \( -type f -o -type l \) -print0 2>/dev/null)
+
+while IFS= read -r -d '' up_f; do
+  rel="${up_f#"$SYS_ASSETS"}"
+  install_sys_file "$rel" "0644" "root:root"
+done < <(find "$SYS_ASSETS/etc/niri-upstream-skel" \( -type f -o -type l \) -print0 2>/dev/null)
 install_sys_file "/etc/guest-skel"
 install_sys_file "/etc/sandbox-skel"
 install_sys_file "/etc/polkit-1/rules.d/00-guest-block.rules" "0644" "root:root"
@@ -1076,6 +1081,23 @@ EOF
     fi
   fi
 done
+
+if id "niri-upstream" >/dev/null 2>&1; then
+  u_home="$(getent passwd "niri-upstream" | cut -d: -f6)"
+  if [[ -d "/etc/niri-upstream-skel/.config" ]]; then
+    if [[ ! -f "$u_home/.config/niri/config.kdl" || ( -f "$u_home/.config/niri/config.kdl" && ! -f "$u_home/.config/niri/binds.kdl" ) ]]; then
+      log_change "[CAMBIO] Aprovisionando entorno puro upstream para 'niri-upstream' desde /etc/niri-upstream-skel..."
+      CHANGES=$((CHANGES + 1))
+      if [[ "$DRY_RUN" == false ]]; then
+        mkdir -p "$u_home/.config"
+        cp -a /etc/niri-upstream-skel/.config/. "$u_home/.config/"
+        chown -R niri-upstream:niri-upstream "$u_home/.config"
+      fi
+    else
+      log_ok "[✓] ya el usuario 'niri-upstream' cuenta con su configuración upstream pura de Niri."
+    fi
+  fi
+fi
 
 for nyx_u in nyxuri nyxuri-test; do
   if id "$nyx_u" >/dev/null 2>&1; then
