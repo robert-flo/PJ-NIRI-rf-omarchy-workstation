@@ -14,7 +14,6 @@ binds {
     Mod+D { spawn "qs" "-c" "clavis" "ipc" "call" "launcher" "toggle"; }
 
     Mod+T hotkey-overlay-title="Open a Terminal: kitty" { spawn "kitty"; }
-    Mod+Return hotkey-overlay-title="Open a Terminal: alacritty" { spawn "alacritty"; }
     Mod+E { spawn "kitty" "yazi"; }
     Mod+Shift+Slash { show-hotkey-overlay; }
 
