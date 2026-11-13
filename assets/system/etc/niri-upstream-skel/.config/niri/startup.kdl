@@ -1,7 +1,5 @@
 spawn-at-startup "/usr/lib/polkit-gnome/polkit-gnome-authentication-agent-1"
 spawn-at-startup "fcitx5"
-spawn-at-startup "nm-applet"
-spawn-at-startup "blueman-applet"
 spawn-at-startup "awww-daemon"
 spawn-sh-at-startup "awww-daemon -n overview"
 spawn-at-startup "xwayland-satellite"

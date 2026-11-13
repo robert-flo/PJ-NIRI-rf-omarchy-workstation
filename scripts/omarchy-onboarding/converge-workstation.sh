@@ -941,7 +941,7 @@ else
 fi
 
 # 4.6 Despliegue Unificado de Dotfiles vía Chezmoi (Single Source of Truth)
-DOTFILES_USERS=("$INVOKING_USER" niri niri-classic niri-test omarchy-test nyxuri nyxuri-test)
+DOTFILES_USERS=("$INVOKING_USER" niri niri-classic niri-upstream niri-test omarchy-test nyxuri nyxuri-test)
 for du in "${DOTFILES_USERS[@]}"; do
   if id "$du" >/dev/null 2>&1; then
     du_home="$(getent passwd "$du" | cut -d: -f6)"
