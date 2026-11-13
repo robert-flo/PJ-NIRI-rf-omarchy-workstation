@@ -1084,16 +1084,35 @@ done
 
 if id "niri-upstream" >/dev/null 2>&1; then
   u_home="$(getent passwd "niri-upstream" | cut -d: -f6)"
-  if [[ -d "/etc/niri-upstream-skel/.config" ]]; then
+  if [[ -d "/etc/niri-upstream-skel" ]]; then
     if [[ ! -f "$u_home/.config/niri/config.kdl" || ( -f "$u_home/.config/niri/config.kdl" && ! -f "$u_home/.config/niri/binds.kdl" ) ]]; then
       log_change "[CAMBIO] Aprovisionando entorno puro upstream para 'niri-upstream' desde /etc/niri-upstream-skel..."
       CHANGES=$((CHANGES + 1))
       if [[ "$DRY_RUN" == false ]]; then
-        mkdir -p "$u_home/.config"
-        cp -a /etc/niri-upstream-skel/.config/. "$u_home/.config/"
-        chown -R niri-upstream:niri-upstream "$u_home/.config"
+        mkdir -p "$u_home/.config" "$u_home/.local"
+        cp -a /etc/niri-upstream-skel/. "$u_home/"
+        chown -R niri-upstream:niri-upstream "$u_home/.config" "$u_home/.local"
       fi
     else
+      # Sincronización idempotente de fondos upstream y variables de entorno Clavis
+      if [[ -d "/etc/niri-upstream-skel/.local" && ! -d "$u_home/.local/share/clavis/wallpapers" ]]; then
+        log_change "[CAMBIO] Desplegando fondos de pantalla upstream en 'niri-upstream'..."
+        CHANGES=$((CHANGES + 1))
+        if [[ "$DRY_RUN" == false ]]; then
+          mkdir -p "$u_home/.local"
+          cp -a /etc/niri-upstream-skel/.local/. "$u_home/.local/"
+          chown -R niri-upstream:niri-upstream "$u_home/.local"
+        fi
+      fi
+      if [[ -f "/etc/niri-upstream-skel/.config/environment.d/10-clavis-upstream.conf" && ! -f "$u_home/.config/environment.d/10-clavis-upstream.conf" ]]; then
+        log_change "[CAMBIO] Desplegando environment.d/10-clavis-upstream.conf en 'niri-upstream'..."
+        CHANGES=$((CHANGES + 1))
+        if [[ "$DRY_RUN" == false ]]; then
+          mkdir -p "$u_home/.config/environment.d"
+          cp -a /etc/niri-upstream-skel/.config/environment.d/10-clavis-upstream.conf "$u_home/.config/environment.d/"
+          chown -R niri-upstream:niri-upstream "$u_home/.config/environment.d"
+        fi
+      fi
       log_ok "[✓] ya el usuario 'niri-upstream' cuenta con su configuración upstream pura de Niri."
     fi
   fi
