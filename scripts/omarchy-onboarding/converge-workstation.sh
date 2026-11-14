@@ -1023,11 +1023,11 @@ for du in "${DOTFILES_USERS[@]}"; do
         if [[ "$diff_count" -gt 0 || ! -f "$du_home/.config/lazygit/config.yml" ]]; then
           log_change "[CAMBIO] Convergiendo dotfiles vía Chezmoi para '$du'..."
           CHANGES=$((CHANGES + 1))
-          # Migrar directorios físicos antiguos de wallpapers/video y wallpapers/favorites a enlaces simbólicos hacia /z/wallpaper-collection
+          # Limpieza de directorios obsoletos y migración de video a enlace simbólico
           if [[ -d "$du_home/.local/share/clavis/wallpapers/video" && ! -L "$du_home/.local/share/clavis/wallpapers/video" ]]; then
             rm -rf "$du_home/.local/share/clavis/wallpapers/video"
           fi
-          if [[ -d "$du_home/.local/share/clavis/wallpapers/favorites" && ! -L "$du_home/.local/share/clavis/wallpapers/favorites" ]]; then
+          if [[ -e "$du_home/.local/share/clavis/wallpapers/favorites" || -L "$du_home/.local/share/clavis/wallpapers/favorites" ]]; then
             rm -rf "$du_home/.local/share/clavis/wallpapers/favorites"
           fi
           sudo -u "$du" -H chezmoi apply --source=/z/rf-dotfiles --force || true
