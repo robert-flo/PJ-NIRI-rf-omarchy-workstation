@@ -150,13 +150,19 @@ reset_user() {
 
         nyxuri|nyxuri-test)
             log "Desplegando unidades modulares Nyxuri Engine para '$target_user'..."
-            local base_units="niri noctalia kitty fastfetch fish starship theme wallpapers xdg-desktop-portal zed"
+            # Enlazar colección compartida local /z/wallpaper-collection evitando descargas por red
+            if [[ -d /z/wallpaper-collection ]]; then
+                mkdir -p "$target_home/Pictures"
+                ln -snf /z/wallpaper-collection "$target_home/Pictures/Wallpapers"
+            fi
+
+            local base_units="niri noctalia kitty fastfetch fish starship theme xdg-desktop-portal zed"
             local optional_units="fcitx5-rime greeter mango obsidian-theme"
             local shell_units="shell.bar shell.desktopcards shell.dock shell.launcher shell.lock shell.notifications shell.regionselector shell.session shell.settings shell.sidebars shell.wallpaper"
 
             if [[ -x /usr/local/bin/nyxuri ]]; then
                 for unit in $base_units $optional_units $shell_units; do
-                    sudo -u "$target_user" -H /usr/local/bin/nyxuri on "$unit" >/dev/null 2>&1 || true
+                    sudo -u "$target_user" env NYXURI_TEST_MODE=1 /usr/local/bin/nyxuri on "$unit" >/dev/null 2>&1 || true
                 done
                 sudo -u "$target_user" -H /usr/local/bin/nyxuri shell set nyxuri-shell /usr/local/bin/nyxuri-shell >/dev/null 2>&1 || true
             fi
