@@ -18,3 +18,4 @@ __pycache__/
 # Temporales y respaldos de los scripts de secretos (solo ciphertext)
 scripts/secrets/.secrets.tar.gz.age.tmp.*
 scripts/secrets/*.age.bak-*
+.atlas/
