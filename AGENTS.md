@@ -58,13 +58,15 @@ Este repositorio (`PJ-NIRI-rf-omarchy-workstation`) persigue una visión fundame
   - `<admin>` (`rollo`, `omarchy`, etc.): Administración del sistema + entorno Omarchy/Hyprland base (nunca asumir un nombre fijo como `omarchy`; cualquier máquina con cualquier nombre de usuario puede tomar rol PADRE o HIJA).
   - `niri`: Producción de escritorio Wayland bajo Clavis Shell (Quickshell).
   - `niri-classic`: Entorno de escritorio bajo Clavis Shell Classic (rama `personal-classic` congelada con barra clásica de pastillas/pills, banner de perfil y sección device settings restaurados, aislado en `/opt/clavis-classic`; actualizaciones selectivas solo vía cherry-pick manual).
-  - `niri-upstream`: Entorno de referencia pura vanilla directo de upstream sin personalizaciones ni reglas locales (para contrastar comportamientos upstream vs capas locales).
-  - `niri-test` (referenciado también como `sura`): Entorno de pruebas visuales y testbench para Clavis (desechable, se recrea desde dotfiles).
-  - `nyxuri`: Producción de escritorio Wayland bajo Noctalia Shell / Nyxuri Engine (Edge T3 M4).
-  - `nyxuri-test`: Entorno de pruebas y testbench para Nyxuri Edge (desechable).
-  - `nyxuri-legacy`: Entorno de escritorio bajo Nyxuri Stable (tag `v3.1.0` de upstream).
+  - `niri-upstream`: Entorno de referencia pura vanilla directo de upstream sin personalizaciones ni reglas locales (desechable, auto-regenerado en login desde `/z/rf-dotfiles/.upstream/` y `/opt/clavis-upstream`).
+  - `niri-test` (referenciado también como `sura`): Gemelo idéntico del usuario de producción `niri` para pruebas de escritorio (desechable: se le puede hacer wipe en cualquier momento y se auto-regenera en cada login desde `rf-dotfiles`).
+  - `nyxuri`: Entorno de escritorio Wayland bajo Noctalia Shell / Nyxuri Engine (Edge T3 M4, desechable, auto-regenerado en login).
+  - `nyxuri-test`: Entorno de pruebas y testbench para Nyxuri Edge (desechable, auto-regenerado en login).
+  - `nyxuri-legacy`: Entorno de escritorio bajo Nyxuri Stable (tag `v3.1.0` de upstream, desechable, auto-regenerado en login).
+  - `omarchy-test`: Entorno de pruebas y testbench para Omarchy 4.6 (desechable, auto-regenerado en login).
   - `guest`: Entorno amnésico volátil montado en RAM (`tmpfs` 8GB, destrucción inmediata al logout).
   - `sandbox`: Entorno amnésico desechable de alto rendimiento sobre Btrfs CoW (aceleración GPU nativa, rollback automático en 3 capas al arranque, login y logout).
+  - *Nota sobre usuarios desechables:* `disposable-session-manager.sh` gestiona la purga amnésica y el re-despliegue canónico vía Chezmoi SSoT en cada login vía PAM `open_session`.
 - Configuración unificada de dotfiles y manifiesto de paquetes: `robert-flo/rf-dotfiles` con **Chezmoi** (alojado en `/z/rf-dotfiles`, ver [[docs/adr/0003-chezmoi-unificacion-dotfiles-y-paquetes|ADR 0003]]).
 - Configuración de usuario de `nyxuri`/`nyxuri-test`: `robert-flo/PJ-NIRI-fo-nyxuri` (Edge) y dotfiles compartidos vía Chezmoi.
 - Configuración de usuario de `nyxuri-legacy`: `ech678/Nyxuri` tag `v3.1.0` (Estable).

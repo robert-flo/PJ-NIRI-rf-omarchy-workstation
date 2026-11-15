@@ -341,6 +341,8 @@ install_sys_file "/etc/systemd/system/user@1008.service.d/rollback.conf" "0644" 
 install_sys_file "/etc/systemd/system/sandbox-btrfs-boot-reset.service" "0644" "root:root"
 install_sys_file "/usr/local/bin/guest-session-manager.sh" "0755" "root:root"
 install_sys_file "/usr/local/bin/sandbox-btrfs-manager.sh" "0755" "root:root"
+install_sys_file "/usr/local/bin/disposable-session-manager.sh" "0755" "root:root"
+install_sys_file "/usr/local/bin/disposable-session-manager"
 install_sys_file "/usr/local/bin/power-menu.sh" "0755" "root:root"
 
 if ! id guest >/dev/null 2>&1; then

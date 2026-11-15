@@ -14,6 +14,7 @@ session    optional   pam_loginuid.so
 session    optional   pam_keyinit.so       force revoke
 -session    optional   pam_exec.so          seteuid /usr/local/bin/guest-session-manager.sh
 -session    optional   pam_exec.so          seteuid /usr/local/bin/sandbox-btrfs-manager.sh
+-session    optional   pam_exec.so          seteuid /usr/local/bin/disposable-session-manager.sh
 session    include    system-auth
 session    optional   pam_lastlog2.so      silent
 session    optional   pam_motd.so
