@@ -80,6 +80,7 @@ Uso:
 
 Comandos principales:
   ${CYAN}status [--upstream]${RESET}          Muestra el dashboard de salud de clones locales (o contra upstream).
+  ${CYAN}audit [--dirty-only]${RESET}         Audita toda la topología canónica (/z, /z-drive/tries, /opt/src, /zt) buscando repos sucios o sin push.
   ${CYAN}upstream [-g <grupo>]${RESET}        Audita todos los forks en GitHub contra sus respectivos upstreams.
   ${CYAN}sync-upstream [fork|--all]${RESET}   Sincroniza forks contra upstream según su estrategia (ADR-0024 / ADR-013).
   ${CYAN}update [repo|--all]${RESET}          Actualiza idempotentemente los clones locales configurados.
@@ -219,6 +220,9 @@ cmd_upstream() {
             if [[ "$behind" -eq 0 ]]; then
                 status_badge="${GREEN}🟢 Al día (+${ahead}/-0)${RESET}"
                 up_to_date=$((up_to_date + 1))
+            elif [[ "$sync_strategy" == "manual" || "$sync_strategy" == "frozen" || "$sync_strategy" == "none" ]]; then
+                status_badge="${CYAN}❄️ Congelado (-${behind}/+${ahead})${RESET}"
+                behind_count=$((behind_count + 1))
             else
                 status_badge="${YELLOW}🔄 Detrás (-${behind}/+${ahead})${RESET}"
                 behind_count=$((behind_count + 1))
@@ -305,6 +309,12 @@ cmd_sync_upstream() {
         behind=$(python3 -c 'import sys,json; d=json.load(sys.stdin); print(d.get("behind_by",0))' <<< "$cmp_json" 2>/dev/null || echo 0)
         if [[ "$behind" -eq 0 ]]; then
             log "[✓] $name (${fork_repo}:${branch}) ya está al día contra ${upstream_repo}:${up_br}."
+            skipped=$((skipped + 1))
+            continue
+        fi
+
+        if [[ "$sync_strategy" == "manual" || "$sync_strategy" == "frozen" || "$sync_strategy" == "none" ]]; then
+            log "[❄️ CONGELADO] $name tiene $behind commits pendientes en upstream pero su estrategia es $sync_strategy. Omitiendo sincronización automática."
             skipped=$((skipped + 1))
             continue
         fi
@@ -559,6 +569,115 @@ cmd_status() {
     echo -e "${BOLD}================================================================================${RESET}"
 }
 
+cmd_audit() {
+    local dirty_only=false
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -d|--dirty-only) dirty_only=true; shift ;;
+            -h|--help)
+                echo "Uso: forkhub audit [-d|--dirty-only]"
+                echo "Audita toda la topología canónica de repositorios buscando cambios sin commit, commits sin push o clones en /zt."
+                return 0
+                ;;
+            *)
+                echo -e "${RED}Opción desconocida en audit: $1${RESET}" >&2
+                return 1
+                ;;
+        esac
+    done
+
+    local roots=(
+        "/z-home-repos"
+        "/z/repos"
+        "/z/vaults"
+        "/z/pj-omarchy"
+        "/z/rf-dotfiles"
+        "/z/nvims"
+        "/z/wallpaper-collection"
+        "/z-drive/tries"
+        "/opt/src"
+        "/zt"
+    )
+
+    local repos=()
+    local r
+    for r in "${roots[@]}"; do
+        [[ -d "$r" ]] || continue
+        while IFS= read -r git_marker; do
+            repos+=("$(dirname "$git_marker")")
+        done < <(find "$r" -maxdepth 3 -name ".git" 2>/dev/null | sort)
+    done
+
+    echo -e "${BOLD}========================================================================================================${RESET}"
+    echo -e "${BOLD}          FORKHUB AUDIT — Salud Global de Flota y Topología Canónica (Dirty / Unpushed)              ${RESET}"
+    echo -e "${BOLD}========================================================================================================${RESET}"
+    printf " %-46s %-16s %-22s %s\n" "REPOSITORIO" "RAMA" "SINCRONIZACIÓN" "ÁRBOL"
+    echo -e "--------------------------------------------------------------------------------------------------------"
+
+    local total=0 dirty_cnt=0 unpushed_cnt=0 noncanon_cnt=0
+    local repo branch porcelain sync_badge tree_badge issue_flag
+
+    for repo in "${repos[@]}"; do
+        total=$((total + 1))
+        ensure_safe_directory "$repo"
+
+        branch=$(git -C "$repo" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "detached")
+        porcelain=$(git -C "$repo" status --porcelain 2>/dev/null || true)
+
+        issue_flag=false
+        if [[ -n "$porcelain" ]]; then
+            local changed_count
+            changed_count=$(printf "%s\n" "$porcelain" | wc -l | tr -d ' ')
+            tree_badge="${YELLOW}✏️ Sucio (${changed_count})${RESET}"
+            dirty_cnt=$((dirty_cnt + 1))
+            issue_flag=true
+        else
+            tree_badge="${GREEN}✓ Limpio${RESET}"
+        fi
+
+        local upstream ahead
+        upstream=$(git -C "$repo" rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>/dev/null || true)
+        if [[ -z "$upstream" ]]; then
+            sync_badge="${YELLOW}⚠️ Sin upstream${RESET}"
+            unpushed_cnt=$((unpushed_cnt + 1))
+            issue_flag=true
+        else
+            ahead=$(git -C "$repo" rev-list --count "${upstream}..HEAD" 2>/dev/null || echo 0)
+            if [[ "$ahead" -gt 0 ]]; then
+                sync_badge="${MAGENTA}⬆️ Sin push (+${ahead})${RESET}"
+                unpushed_cnt=$((unpushed_cnt + 1))
+                issue_flag=true
+            else
+                sync_badge="${GREEN}🟢 Al día${RESET}"
+            fi
+        fi
+
+        if [[ "$repo" == /zt/* ]]; then
+            sync_badge="${RED}⚠️ /zt (Fuera topología)${RESET}"
+            noncanon_cnt=$((noncanon_cnt + 1))
+            issue_flag=true
+        fi
+
+        if [[ "$dirty_only" == "true" && "$issue_flag" == "false" ]]; then
+            continue
+        fi
+
+        local short_repo="$repo"
+        if [[ ${#short_repo} -gt 45 ]]; then
+            short_repo="...${short_repo: -42}"
+        fi
+        local short_branch="$branch"
+        if [[ ${#short_branch} -gt 15 ]]; then
+            short_branch="${short_branch:0:12}..."
+        fi
+
+        printf " %-46s %-16s %-31b %b\n" "$short_repo" "$short_branch" "$sync_badge" "$tree_badge"
+    done
+
+    echo -e "${BOLD}========================================================================================================${RESET}"
+    echo -e " Resumen: ${BOLD}$total${RESET} repos | ${YELLOW}$dirty_cnt sucios${RESET} | ${MAGENTA}$unpushed_cnt sin push/upstream${RESET} | ${RED}$noncanon_cnt en /zt${RESET}"
+}
+
 cmd_update() {
     local target=""
     local group_filter=""
@@ -808,6 +927,10 @@ case "${1:-}" in
     status)
         shift
         cmd_status "$@"
+        ;;
+    audit)
+        shift
+        cmd_audit "$@"
         ;;
     upstream|check-upstream)
         shift

@@ -1,0 +1,10 @@
+[Unit]
+Description=Fixes permissions on /z-home-repos every 30 seconds (backup)
+[Timer]
+
+OnBootSec=10
+OnUnitActiveSec=30s
+AccuracySec=1s
+
+[Install]
+WantedBy=timers.target

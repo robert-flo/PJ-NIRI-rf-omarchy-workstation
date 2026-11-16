@@ -431,6 +431,7 @@ SHARED_DIRS=(
   "/z/nvims:2775"
   "/z/wallpaper-collection:2775"
   "/z/android-projects:2770"
+  "/z-home-repos:2770"
   "/zt:2770"
   "/z-drive:2770"
   "/z-drive/tries:2770"
@@ -493,10 +494,10 @@ else
 fi
 
 # Watchers de permisos y unidades systemd
-for bin_f in fix_shared_dir_perms.sh z-perms_watcher.sh z-drive-perms_watcher.sh android-sdk-perms_watcher.sh android-projects-perms_watcher.sh; do
+for bin_f in fix_shared_dir_perms.sh z-perms_watcher.sh z-drive-perms_watcher.sh z-home-repos-perms_watcher.sh android-sdk-perms_watcher.sh android-projects-perms_watcher.sh; do
   install_sys_file "/usr/local/bin/${bin_f}" "0755" "root:root"
 done
-for unit_f in z-perms.service z-perms.timer z-drive-perms.service z-drive-perms.timer android-sdk-perms.service android-sdk-perms.timer android-projects-perms.service android-projects-perms.timer; do
+for unit_f in z-perms.service z-perms.timer z-drive-perms.service z-drive-perms.timer z-home-repos-perms.service z-home-repos-perms.timer android-sdk-perms.service android-sdk-perms.timer android-projects-perms.service android-projects-perms.timer; do
   install_sys_file "/etc/systemd/system/${unit_f}" "0644" "root:root"
 done
 
