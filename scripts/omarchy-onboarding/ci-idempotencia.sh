@@ -17,7 +17,7 @@ set -euo pipefail
 # ------------------------------------------------------------------------------
 if [[ $EUID -eq 0 ]]; then
   echo "==> [Bootstrap] Preparando dependencias del sistema en contenedor..."
-  pacman -Sy --noconfirm git acl sudo gnupg diffutils >/dev/null 2>&1
+  pacman -Syu --noconfirm git acl sudo gnupg diffutils >/dev/null 2>&1
 
   # Crear usuario no-root 'ci' en grupo 'wheel' si no existe
   if ! id -u ci >/dev/null 2>&1; then

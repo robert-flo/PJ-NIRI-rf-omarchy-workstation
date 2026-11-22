@@ -726,7 +726,7 @@ if [[ "$DRY_RUN" == true ]]; then
   generate_hook_content > "$TMP_H"
   chmod +x "$TMP_H"
 
-  DROPIN_PATH="${PACMAN_D}/omarchy-personal.conf" DEV_FLAG="$TMP_PD/omarchy-personal-dev.flag" PACMAN_CONF="$TMP_PC" PACMAN_D="$TMP_PD" bash "$TMP_H"
+  env DROPIN_PATH="${PACMAN_D}/omarchy-personal.conf" DEV_FLAG="$TMP_PD/omarchy-personal-dev.flag" PACMAN_CONF="$TMP_PC" PACMAN_D="$TMP_PD" bash "$TMP_H"
 
   if ! cmp -s "$PACMAN_CONF" "$TMP_PC"; then
     log_change "[CAMBIO] pacman.conf se modificaría según el hook pre-refresh:"
