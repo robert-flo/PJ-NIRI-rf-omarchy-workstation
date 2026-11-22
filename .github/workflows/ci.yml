@@ -38,7 +38,7 @@ jobs:
       image: archlinux:latest
     steps:
       - name: Instalar dependencias en contenedor
-        run: pacman -Sy --noconfirm git acl sudo gnupg diffutils
+        run: pacman -Syu --noconfirm git acl sudo gnupg diffutils
       - name: Checkout del repositorio
         uses: actions/checkout@v4
       - name: Ejecutar validación de idempotencia
@@ -51,7 +51,7 @@ jobs:
       image: archlinux:latest
     steps:
       - name: Instalar dependencias en contenedor
-        run: pacman -Sy --noconfirm age python tar gzip diffutils
+        run: pacman -Syu --noconfirm age python tar gzip diffutils
       - name: Checkout del repositorio
         uses: actions/checkout@v4
       - name: Test de secretos (modo batchpass si el paquete lo trae)
