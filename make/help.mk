@@ -5,10 +5,12 @@
 .PHONY: help
 
 help: ## [General] Muestra esta ayuda dinámica categorizada
+ifndef EMBEDDED
 	@printf "\n"
 	@printf "$(CYAN)══════════════════════════════════════════════════════════════════════════$(NC)\n"
-	@printf "$(BOLD)$(CYAN)  PJ-NIRI-rf-omarchy-workstation — Orquestación de Estación de Trabajo$(NC)\n"
+	@printf "$(CYAN)$(BOLD)  PJ-NIRI-rf-omarchy-workstation — Orquestación de Estación de Trabajo$(NC)\n"
 	@printf "$(CYAN)══════════════════════════════════════════════════════════════════════════$(NC)\n"
+endif
 	@awk ' \
 		BEGIN { cat_count = 0 } \
 		/^[a-zA-Z0-9_-]+:.*## \[/ { \
@@ -25,7 +27,7 @@ help: ## [General] Muestra esta ayuda dinámica categorizada
 		END { \
 			for (i = 1; i <= cat_count; i++) { \
 				c = cats[i]; \
-				printf "\n$(BOLD)$(BLUE)%s$(NC)\n", c; \
+				printf "\n$(BLUE)$(BOLD)%s$(NC)\n", c; \
 				printf "$(DIM)──────────────────────────────────────────────────────────────────────────$(NC)\n"; \
 				for (j = 1; j <= count[c]; j++) { \
 					print items[c, j]; \
