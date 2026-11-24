@@ -23,42 +23,8 @@ endif
 include make/help.mk
 include make/install.mk
 include make/doctor.mk
-
-# Targets legacy pendientes de extracción (#179)
-.PHONY: secrets lock-secrets test-secrets \
-        forks forks-audit forks-sync \
-        sync sync-replica sync-status \
-        sandbox-status sandbox-reset
-
-sync-status: ## [Diagnóstico] Dashboard en tiempo real de sincronizaciones /z-drive y nube
-	sudo sync-status
-
-sync: ## [Almacenamiento] Siembra y sincronización integral inteligente (sync-all)
-	sudo sync-all
-
-sync-replica: ## [Almacenamiento] Fuerza descarga/réplica desde Cloud sin riesgo (sync-all --replica)
-	sudo sync-all --replica
-
-secrets: ## [Secretos] Desbloquea y aprovisiona secretos en todos los usuarios
-	./scripts/secrets/desbloquear-secretos.sh
-
-lock-secrets: ## [Secretos] Empaqueta y recifra el bundle de secretos (age)
-	./scripts/secrets/cifrar-secretos.sh
-
-test-secrets: ## [Secretos] Verifica que el bundle de secretos pueda descifrarse
-	./scripts/secrets/probar-descifrado.sh
-
-forks: ## [Forkhub] Dashboard de salud y ramas de los repositorios
-	forkhub status
-
-forks-audit: ## [Forkhub] Audita divergencias y commits contra upstreams oficiales
-	./scripts/forkhub/auditar-forks.sh
-
-forks-sync: ## [Forkhub] Sincroniza y mergea upstreams respetando directiva ADR 0024
-	forkhub sync
-
-sandbox-status: ## [Sandbox] Consulta estado del subvolumen y snapshots del sandbox
-	sudo sandbox-btrfs-manager.sh status
-
-sandbox-reset: ## [Sandbox] Rollback instantáneo de fábrica para el usuario sandbox
-	sudo sandbox-btrfs-manager.sh reset
+include make/secrets.mk
+include make/forks.mk
+include make/sync.mk
+include make/sandbox.mk
+include make/quality.mk
