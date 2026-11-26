@@ -34,7 +34,8 @@ fi
 
 log() {
     local target="${CURRENT_TARGET:-forkhub}"
-    local msg="[$(date "+%Y-%m-%d %H:%M:%S")] [$target] $*"
+    local msg
+    msg="[$(date "+%Y-%m-%d %H:%M:%S")] [$target] $*"
     echo -e "$msg"
     if [[ -w "$LOG_FILE" ]] || [[ ! -e "$LOG_FILE" && -w "/var/log" ]]; then
         echo "$msg" >> "$LOG_FILE" 2>/dev/null || true
@@ -80,6 +81,7 @@ Uso:
 
 Comandos principales:
   ${CYAN}status [--upstream]${RESET}          Muestra el dashboard de salud de clones locales (o contra upstream).
+  ${CYAN}audit [--dirty-only]${RESET}         Audita toda la topología canónica (/z, /z-drive/tries, /opt/src, /zt) buscando repos sucios o sin push.
   ${CYAN}upstream [-g <grupo>]${RESET}        Audita todos los forks en GitHub contra sus respectivos upstreams.
   ${CYAN}sync-upstream [fork|--all]${RESET}   Sincroniza forks contra upstream según su estrategia (ADR-0024 / ADR-013).
   ${CYAN}update [repo|--all]${RESET}          Actualiza idempotentemente los clones locales configurados.
@@ -107,6 +109,7 @@ EOF
 load_config() {
     local conf="$1"
     name=""
+    # shellcheck disable=SC2034
     description=""
     repo_dir=""
     remote="origin"
@@ -568,6 +571,122 @@ cmd_status() {
     echo -e "${BOLD}================================================================================${RESET}"
 }
 
+cmd_audit() {
+    local dirty_only=false
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -d|--dirty-only) dirty_only=true; shift ;;
+            -h|--help)
+                echo "Uso: forkhub audit [-d|--dirty-only]"
+                echo "Audita toda la topología canónica de repositorios buscando cambios sin commit, commits sin push o clones en /zt."
+                return 0
+                ;;
+            *)
+                echo -e "${RED}Opción desconocida en audit: $1${RESET}" >&2
+                return 1
+                ;;
+        esac
+    done
+
+    local roots=(
+        "/z-home-repos"
+        "/z-home-repos/repos"
+        "/z/vaults"
+        "/z/pj-omarchy"
+        "/z/rf-dotfiles"
+        "/z/nvims"
+        "/z/wallpaper-collection"
+        "/z-drive/tries"
+        "/opt/src"
+        "/zt"
+    )
+
+    local raw_repos=()
+    local r
+    for r in "${roots[@]}"; do
+        [[ -d "$r" ]] || continue
+        local depth=3
+        [[ "$r" == "/z-home-repos/repos" ]] && depth=5
+        while IFS= read -r git_marker; do
+            raw_repos+=("$(dirname "$git_marker")")
+        done < <(find "$r" -maxdepth "$depth" -name ".git" 2>/dev/null | sort)
+    done
+
+    local repos=()
+    while IFS= read -r repo_path; do
+        [[ -n "$repo_path" ]] && repos+=("$repo_path")
+    done < <(printf '%s\n' "${raw_repos[@]}" | sort -u)
+
+    echo -e "${BOLD}========================================================================================================${RESET}"
+    echo -e "${BOLD}          FORKHUB AUDIT — Salud Global de Flota y Topología Canónica (Dirty / Unpushed)              ${RESET}"
+    echo -e "${BOLD}========================================================================================================${RESET}"
+    printf " %-46s %-16s %-22s %s\n" "REPOSITORIO" "RAMA" "SINCRONIZACIÓN" "ÁRBOL"
+    echo -e "--------------------------------------------------------------------------------------------------------"
+
+    local total=0 dirty_cnt=0 unpushed_cnt=0 noncanon_cnt=0
+    local repo branch porcelain sync_badge tree_badge issue_flag
+
+    for repo in "${repos[@]}"; do
+        total=$((total + 1))
+        ensure_safe_directory "$repo"
+
+        branch=$(git -C "$repo" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "detached")
+        porcelain=$(git -C "$repo" status --porcelain 2>/dev/null || true)
+
+        issue_flag=false
+        if [[ -n "$porcelain" ]]; then
+            local changed_count
+            changed_count=$(printf "%s\n" "$porcelain" | wc -l | tr -d ' ')
+            tree_badge="${YELLOW}✏️ Sucio (${changed_count})${RESET}"
+            dirty_cnt=$((dirty_cnt + 1))
+            issue_flag=true
+        else
+            tree_badge="${GREEN}✓ Limpio${RESET}"
+        fi
+
+        local upstream ahead
+        upstream=$(git -C "$repo" rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>/dev/null || true)
+        if [[ -z "$upstream" ]]; then
+            sync_badge="${YELLOW}⚠️ Sin upstream${RESET}"
+            unpushed_cnt=$((unpushed_cnt + 1))
+            issue_flag=true
+        else
+            ahead=$(git -C "$repo" rev-list --count "${upstream}..HEAD" 2>/dev/null || echo 0)
+            if [[ "$ahead" -gt 0 ]]; then
+                sync_badge="${MAGENTA}⬆️ Sin push (+${ahead})${RESET}"
+                unpushed_cnt=$((unpushed_cnt + 1))
+                issue_flag=true
+            else
+                sync_badge="${GREEN}🟢 Al día${RESET}"
+            fi
+        fi
+
+        if [[ "$repo" == /zt/* ]]; then
+            sync_badge="${RED}⚠️ /zt (Fuera topología)${RESET}"
+            noncanon_cnt=$((noncanon_cnt + 1))
+            issue_flag=true
+        fi
+
+        if [[ "$dirty_only" == "true" && "$issue_flag" == "false" ]]; then
+            continue
+        fi
+
+        local short_repo="$repo"
+        if [[ ${#short_repo} -gt 45 ]]; then
+            short_repo="...${short_repo: -42}"
+        fi
+        local short_branch="$branch"
+        if [[ ${#short_branch} -gt 15 ]]; then
+            short_branch="${short_branch:0:12}..."
+        fi
+
+        printf " %-46s %-16s %-31b %b\n" "$short_repo" "$short_branch" "$sync_badge" "$tree_badge"
+    done
+
+    echo -e "${BOLD}========================================================================================================${RESET}"
+    echo -e " Resumen: ${BOLD}$total${RESET} repos | ${YELLOW}$dirty_cnt sucios${RESET} | ${MAGENTA}$unpushed_cnt sin push/upstream${RESET} | ${RED}$noncanon_cnt en /zt${RESET}"
+}
+
 cmd_update() {
     local target=""
     local group_filter=""
@@ -817,6 +936,10 @@ case "${1:-}" in
     status)
         shift
         cmd_status "$@"
+        ;;
+    audit)
+        shift
+        cmd_audit "$@"
         ;;
     upstream|check-upstream)
         shift
