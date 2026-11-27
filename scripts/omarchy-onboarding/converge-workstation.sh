@@ -216,7 +216,7 @@ if ! getent group adbusers >/dev/null 2>&1; then
   run groupadd -f adbusers
 fi
 
-WORKSTATION_USERS=("niri" "niri-classic" "niri-upstream" "niri-test" "nyxuri" "nyxuri-test" "nyxuri-legacy" "omarchy-test")
+WORKSTATION_USERS=("niri" "niri-classic" "niri-upstream" "niri-test" "nyxuri" "nyxuri-test" "nyxuri-legacy" "omarchy-test" "hyde")
 REQ_GROUPS="wheel,audio,input,video,kvm,storage,render,adbusers"
 
 # Selección interactiva y gestión de contraseñas de usuarios de la estación
@@ -995,14 +995,14 @@ if [[ -f /usr/local/share/wayland-sessions/omarchy.desktop && ! -e /usr/share/wa
   run ln -sfn /usr/local/share/wayland-sessions/omarchy.desktop /usr/share/wayland-sessions/omarchy.desktop
 fi
 
-# Configurar Greetd + Noctalia Greeter como Display Manager por defecto
-if ! systemctl is-enabled greetd.service >/dev/null 2>&1; then
-  log_change "[CAMBIO] Habilitando Greetd (Noctalia Greeter) como Display Manager por defecto..."
+# Configurar SDDM como Display Manager por defecto (compatible con HyDE, Niri, Clavis, Nyxuri y Omarchy)
+if ! systemctl is-enabled sddm.service >/dev/null 2>&1; then
+  log_change "[CAMBIO] Habilitando SDDM como Display Manager por defecto..."
   CHANGES=$((CHANGES + 1))
-  run systemctl disable sddm.service || true
-  run systemctl enable greetd.service || true
+  run systemctl disable greetd.service || true
+  run systemctl enable --force sddm.service || true
 else
-  log_ok "[✓] ya Greetd (Noctalia Greeter) está habilitado como Display Manager por defecto."
+  log_ok "[✓] ya SDDM está habilitado como Display Manager por defecto."
 fi
 
 # 4.6 Despliegue Unificado de Dotfiles vía Chezmoi (Single Source of Truth)
