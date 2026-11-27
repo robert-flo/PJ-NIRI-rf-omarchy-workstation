@@ -82,6 +82,7 @@ Uso:
 Comandos principales:
   ${CYAN}status [--upstream]${RESET}          Muestra el dashboard de salud de clones locales (o contra upstream).
   ${CYAN}audit [--dirty-only]${RESET}         Audita toda la topología canónica (/z, /z-drive/tries, /opt/src, /zt) buscando repos sucios o sin push.
+  ${CYAN}bare [audit|prune|sync]${RESET}      Supervisa repos bare (/z-home-repos/.bare), poda huérfanos y sincroniza.
   ${CYAN}upstream [-g <grupo>]${RESET}        Audita todos los forks en GitHub contra sus respectivos upstreams.
   ${CYAN}sync-upstream [fork|--all]${RESET}   Sincroniza forks contra upstream según su estrategia (ADR-0024 / ADR-013).
   ${CYAN}update [repo|--all]${RESET}          Actualiza idempotentemente los clones locales configurados.
@@ -685,6 +686,311 @@ cmd_audit() {
 
     echo -e "${BOLD}========================================================================================================${RESET}"
     echo -e " Resumen: ${BOLD}$total${RESET} repos | ${YELLOW}$dirty_cnt sucios${RESET} | ${MAGENTA}$unpushed_cnt sin push/upstream${RESET} | ${RED}$noncanon_cnt en /zt${RESET}"
+
+    echo ""
+    local bare_opts=()
+    [[ "$dirty_only" == "true" ]] && bare_opts+=("--dirty-only")
+    audit_bare_repos --inline "${bare_opts[@]}"
+}
+
+get_bare_root() {
+    if [[ -n "${RAVN_HOME_REPOS_ROOT:-}" && -d "${RAVN_HOME_REPOS_ROOT%/}/.bare" ]]; then
+        printf '%s\n' "${RAVN_HOME_REPOS_ROOT%/}/.bare"
+    elif [[ -d "/z-home-repos/.bare" ]]; then
+        printf '%s\n' "/z-home-repos/.bare"
+    elif [[ -d "${HOME}/z-home-repos/.bare" ]]; then
+        printf '%s\n' "${HOME}/z-home-repos/.bare"
+    else
+        printf '%s\n' "/z-home-repos/.bare"
+    fi
+}
+
+get_worktree_base() {
+    local bare_name="$1"
+    local repo_base="${bare_name%.git}"
+    local root_base
+    if [[ -n "${RAVN_HOME_REPOS_ROOT:-}" && -d "${RAVN_HOME_REPOS_ROOT%/}/repos" ]]; then
+        root_base="${RAVN_HOME_REPOS_ROOT%/}/repos"
+    elif [[ -d "/z-home-repos/repos" ]]; then
+        root_base="/z-home-repos/repos"
+    elif [[ -d "${HOME}/z-home-repos/repos" ]]; then
+        root_base="${HOME}/z-home-repos/repos"
+    else
+        root_base="/z-home-repos/repos"
+    fi
+    printf '%s/%s\n' "$root_base" "$repo_base"
+}
+
+audit_bare_repos() {
+    local inline=false
+    local dirty_only=false
+
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --inline) inline=true; shift ;;
+            -d|--dirty-only) dirty_only=true; shift ;;
+            -h|--help)
+                echo "Uso: forkhub bare audit [-d|--dirty-only]"
+                echo "Supervisa el estado de repositorios bare centralizados, detectando worktrees huérfanos, locks activos y refspecs no canónicos."
+                return 0
+                ;;
+            *)
+                shift
+                ;;
+        esac
+    done
+
+    local bare_root
+    bare_root=$(get_bare_root)
+
+    if [[ ! -d "$bare_root" ]]; then
+        echo -e "${YELLOW}Aviso: No se encontró el directorio de repositorios bare en $bare_root${RESET}"
+        return 0
+    fi
+
+    local bare_list=()
+    while IFS= read -r b; do
+        [[ -n "$b" ]] && bare_list+=("$b")
+    done < <(find "$bare_root" -maxdepth 1 \( -name "*.git" -o -name ".*.git" \) -type d 2>/dev/null | sort)
+
+    if [[ ${#bare_list[@]} -eq 0 ]]; then
+        echo -e "${YELLOW}Aviso: No hay repositorios bare (.git) en $bare_root${RESET}"
+        return 0
+    fi
+
+    echo -e "${BOLD}========================================================================================================${RESET}"
+    echo -e "${BOLD}          FORKHUB BARE — Repositorios Bare Centralizados (${bare_root})                ${RESET}"
+    echo -e "${BOLD}========================================================================================================${RESET}"
+    printf " %-35s %-16s %-18s %s\n" "BARE REPOSITORIO" "REFSPEC" "LOCKS" "WORKTREES REGISTRADOS"
+    echo -e "--------------------------------------------------------------------------------------------------------"
+
+    local total=0 locks_total=0 orphans_total=0 canon_total=0 printed_rows=0
+
+    for bare in "${bare_list[@]}"; do
+        total=$((total + 1))
+        local name
+        name=$(basename "$bare")
+        ensure_safe_directory "$bare"
+
+        local issue_flag=false
+
+        # 1. Refspec
+        local refspec
+        refspec=$(git --git-dir="$bare" config --get remote.origin.fetch 2>/dev/null || true)
+        local refspec_badge
+        if [[ -z "$refspec" ]]; then
+            refspec_badge="${YELLOW}⚠️ Sin fetch${RESET}"
+            issue_flag=true
+        elif [[ "$refspec" == "+refs/heads/*:refs/remotes/origin/*" ]]; then
+            refspec_badge="${GREEN}✓ Canon${RESET}"
+            canon_total=$((canon_total + 1))
+        else
+            refspec_badge="${YELLOW}⚠️ No-canon${RESET}"
+            issue_flag=true
+        fi
+
+        # 2. Locks activos
+        local locks
+        locks=$(find "$bare" -maxdepth 3 -name "*.lock" 2>/dev/null || true)
+        local lock_badge
+        local lock_count=0
+        if [[ -n "$locks" ]]; then
+            lock_count=$(printf "%s\n" "$locks" | wc -l | tr -d ' ')
+            lock_badge="${RED}🔒 ${lock_count} lock(s)${RESET}"
+            locks_total=$((locks_total + lock_count))
+            issue_flag=true
+        else
+            lock_badge="${GREEN}✓ Limpio${RESET}"
+        fi
+
+        # 3. Worktrees registrados y huérfanos
+        local wt_count=0
+        local orphan_count=0
+        while IFS= read -r line; do
+            if [[ "$line" =~ ^worktree\ (.*)$ ]]; then
+                local wt="${BASH_REMATCH[1]}"
+                if [[ "$wt" == "$bare" ]]; then
+                    continue
+                fi
+                wt_count=$((wt_count + 1))
+                if [[ ! -d "$wt" ]]; then
+                    orphan_count=$((orphan_count + 1))
+                fi
+            fi
+        done < <(git --git-dir="$bare" worktree list --porcelain 2>/dev/null || true)
+
+        local wt_badge
+        local wt_dir
+        wt_dir=$(get_worktree_base "$name")
+        if [[ $orphan_count -gt 0 ]]; then
+            wt_badge="${RED}⚠️ ${wt_count} wt (${orphan_count} huérfano(s))${RESET}"
+            orphans_total=$((orphans_total + orphan_count))
+            issue_flag=true
+        elif [[ $wt_count -gt 0 ]]; then
+            wt_badge="${CYAN}${wt_count} wt${RESET} ${DIM}(${wt_dir})${RESET}"
+        else
+            wt_badge="${DIM}0 wt${RESET}"
+        fi
+
+        if [[ "$dirty_only" == "true" && "$issue_flag" == "false" ]]; then
+            continue
+        fi
+
+        printed_rows=$((printed_rows + 1))
+        local short_name="$name"
+        if [[ ${#short_name} -gt 34 ]]; then
+            short_name="${short_name:0:31}..."
+        fi
+
+        printf " %-35s %-25b %-27b %b\n" "$short_name" "$refspec_badge" "$lock_badge" "$wt_badge"
+    done
+
+    if [[ "$dirty_only" == "true" && $printed_rows -eq 0 ]]; then
+        echo -e " ${GREEN}✓ Todos los repositorios bare están saludables (sin huérfanos, sin locks, refspec canónico).${RESET}"
+    fi
+
+    echo -e "${BOLD}========================================================================================================${RESET}"
+    echo -e " Resumen Bare: ${BOLD}$total${RESET} repos | ${RED}$locks_total con locks${RESET} | ${YELLOW}$orphans_total huérfanos${RESET} | ${GREEN}$canon_total refspec canónicos${RESET}"
+}
+
+prune_bare_repos() {
+    local bare_root
+    bare_root=$(get_bare_root)
+
+    if [[ ! -d "$bare_root" ]]; then
+        echo -e "${RED}Error: Directorio bare no encontrado en $bare_root${RESET}"
+        return 1
+    fi
+
+    echo -e "${BOLD}Iniciando limpieza y poda de worktrees huérfanos en: $bare_root${RESET}"
+    local total=0 pruned=0
+    local bare_list=()
+    while IFS= read -r b; do
+        [[ -n "$b" ]] && bare_list+=("$b")
+    done < <(find "$bare_root" -maxdepth 1 \( -name "*.git" -o -name ".*.git" \) -type d 2>/dev/null | sort)
+
+    for bare in "${bare_list[@]}"; do
+        total=$((total + 1))
+        local name
+        name=$(basename "$bare")
+        ensure_safe_directory "$bare"
+
+        local has_orphan=false
+        while IFS= read -r line; do
+            if [[ "$line" =~ ^worktree\ (.*)$ ]]; then
+                local wt="${BASH_REMATCH[1]}"
+                if [[ "$wt" != "$bare" && ! -d "$wt" ]]; then
+                    has_orphan=true
+                    break
+                fi
+            fi
+        done < <(git --git-dir="$bare" worktree list --porcelain 2>/dev/null || true)
+
+        if [[ "$has_orphan" == "true" ]]; then
+            echo -e "  ${YELLOW}Podando worktrees huérfanos en $name...${RESET}"
+            git --git-dir="$bare" worktree prune -v 2>&1 | while IFS= read -r out; do
+                echo "    $out"
+            done
+            pruned=$((pruned + 1))
+        fi
+    done
+
+    if [[ $pruned -eq 0 ]]; then
+        echo -e "${GREEN}✓ No se detectaron worktrees huérfanos. Todos los $total repos bare están limpios.${RESET}"
+    else
+        echo -e "${GREEN}✓ Poda finalizada. $pruned repos podados de un total de $total repos bare.${RESET}"
+    fi
+}
+
+sync_bare_repos() {
+    local dry_run=false
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -n|--dry-run)
+                dry_run=true
+                shift
+                ;;
+            *)
+                shift
+                ;;
+        esac
+    done
+
+    local bare_root
+    bare_root=$(get_bare_root)
+
+    if [[ ! -d "$bare_root" ]]; then
+        echo -e "${RED}Error: Directorio bare no encontrado en $bare_root${RESET}"
+        return 1
+    fi
+
+    echo -e "${BOLD}Sincronizando remotos (fetch --prune) en: $bare_root${RESET}"
+    local total=0 synced=0 failed=0
+    local bare_list=()
+    while IFS= read -r b; do
+        [[ -n "$b" ]] && bare_list+=("$b")
+    done < <(find "$bare_root" -maxdepth 1 \( -name "*.git" -o -name ".*.git" \) -type d 2>/dev/null | sort)
+
+    for bare in "${bare_list[@]}"; do
+        total=$((total + 1))
+        local name
+        name=$(basename "$bare")
+        ensure_safe_directory "$bare"
+
+        if [[ "$dry_run" == "true" ]]; then
+            echo -e "  [simulación] $name: git fetch --dry-run --prune origin"
+            if git --git-dir="$bare" fetch --dry-run --prune origin >/dev/null 2>&1; then
+                synced=$((synced + 1))
+            else
+                failed=$((failed + 1))
+            fi
+        else
+            echo -e "  ${CYAN}Fetch $name...${RESET}"
+            if git --git-dir="$bare" fetch --prune origin 2>/dev/null; then
+                synced=$((synced + 1))
+            else
+                echo -e "    ${RED}⚠️ Falló fetch en $name (sin remoto origin o sin conexión)${RESET}"
+                failed=$((failed + 1))
+            fi
+        fi
+    done
+
+    echo -e "${GREEN}✓ Sincronización finalizada. $synced sincronizados exitosamente, $failed con errores (Total: $total).${RESET}"
+}
+
+cmd_bare() {
+    local action="${1:-audit}"
+    case "$action" in
+        audit|status)
+            shift || true
+            audit_bare_repos "$@"
+            ;;
+        prune)
+            shift || true
+            prune_bare_repos "$@"
+            ;;
+        sync|fetch)
+            shift || true
+            sync_bare_repos "$@"
+            ;;
+        -h|--help|help)
+            echo -e "${BOLD}Forkhub Bare — Gestión y Supervisión de Repositorios Bare Centralizados${RESET}"
+            echo ""
+            echo "Uso:"
+            echo "  forkhub bare [audit|prune|sync] [OPCIONES]"
+            echo ""
+            echo "Comandos:"
+            echo -e "  ${CYAN}audit [-d|--dirty-only]${RESET} Audita repositorios bare, worktrees huérfanos, locks y refspecs."
+            echo -e "  ${CYAN}prune${RESET}                  Ejecuta 'git worktree prune' en todos los repositorios bare."
+            echo -e "  ${CYAN}sync [-n|--dry-run]${RESET}    Sincroniza todos los repos bare con 'git fetch --prune origin'."
+            echo ""
+            ;;
+        *)
+            echo -e "${RED}Comando bare no reconocido: $action${RESET}"
+            echo "Uso: forkhub bare [audit|prune|sync]"
+            return 1
+            ;;
+    esac
 }
 
 cmd_update() {
@@ -940,6 +1246,10 @@ case "${1:-}" in
     audit)
         shift
         cmd_audit "$@"
+        ;;
+    bare)
+        shift
+        cmd_bare "$@"
         ;;
     upstream|check-upstream)
         shift
